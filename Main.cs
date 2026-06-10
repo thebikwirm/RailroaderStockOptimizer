@@ -67,10 +67,16 @@ namespace RailroaderStockOptimizer
 
             GUILayout.Space(8f);
 
-            Settings.EnableDebugLogging = GUILayout.Toggle(Settings.EnableDebugLogging, "Enable debug logging");
+            GUILayout.BeginHorizontal();
+            Settings.EnableDebugLogging = GUILayout.Toggle(Settings.EnableDebugLogging, string.Empty, GUILayout.Width(24f));
+            GUILayout.Label(Settings.EnableDebugLogging ? "Debug logging: ON" : "Debug logging: OFF");
+            GUILayout.EndHorizontal();
 
-            GUILayout.Label($"Debug Log Interval: {Settings.DebugLogInterval:F1} sec");
-            Settings.DebugLogInterval = GUILayout.HorizontalSlider(Settings.DebugLogInterval, 1f, 30f);
+            if (Settings.EnableDebugLogging)
+            {
+                GUILayout.Label($"Debug Log Interval: {Settings.DebugLogInterval:F1} sec");
+                Settings.DebugLogInterval = GUILayout.HorizontalSlider(Settings.DebugLogInterval, 1f, 30f);
+            }
 
             GUILayout.Space(8f);
 
