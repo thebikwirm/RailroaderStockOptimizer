@@ -1,4 +1,4 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using Model;
 using RollingStock;
 using System;
@@ -17,6 +17,7 @@ namespace RailroaderStockOptimizer
 
         private static float _refreshTimer;
         private static float _playerScanTimer;
+        private static float _lastDebugLogTime;
 
         private static GameObject _overlayObject;
         private static OverlayBehaviour _overlayBehaviour;
@@ -63,6 +64,13 @@ namespace RailroaderStockOptimizer
             Settings.EnableSleep = GUILayout.Toggle(Settings.EnableSleep, "Allow sleeping distant rigidbodies");
             Settings.RequireStationaryForSleep = GUILayout.Toggle(Settings.RequireStationaryForSleep, "Require stationary for sleep");
             Settings.UseVisibilityCheck = GUILayout.Toggle(Settings.UseVisibilityCheck, "Use renderer visibility");
+
+            GUILayout.Space(8f);
+
+            Settings.EnableDebugLogging = GUILayout.Toggle(Settings.EnableDebugLogging, "Enable debug logging");
+
+            GUILayout.Label($"Debug Log Interval: {Settings.DebugLogInterval:F1} sec");
+            Settings.DebugLogInterval = GUILayout.HorizontalSlider(Settings.DebugLogInterval, 1f, 30f);
 
             GUILayout.Space(8f);
 
@@ -164,6 +172,26 @@ namespace RailroaderStockOptimizer
         {
             ModEntry?.Logger.Log($"[RailroaderStockOptimizer] {msg}");
         }
+
+        public static void DebugLog(string msg)
+        {
+            if (Settings == null || !Settings.EnableDebugLogging)
+                return;
+
+            Log("[Debug] " + msg);
+        }
+
+        public static void DebugLogThrottled(string msg)
+        {
+            if (Settings == null || !Settings.EnableDebugLogging)
+                return;
+
+            if (Time.realtimeSinceStartup - _lastDebugLogTime < Settings.DebugLogInterval)
+                return;
+
+            _lastDebugLogTime = Time.realtimeSinceStartup;
+            Log("[Debug] " + msg);
+        }
     }
 
     public class Settings : UnityModManager.ModSettings, IDrawable
@@ -174,6 +202,9 @@ namespace RailroaderStockOptimizer
         public bool EnableSleep = false;
         public bool RequireStationaryForSleep = true;
         public bool UseVisibilityCheck = true;
+
+        public bool EnableDebugLogging = false;
+        public float DebugLogInterval = 5f;
 
         public float HotRadius = 300f;
         public float WarmRadius = 800f;
@@ -286,7 +317,7 @@ namespace RailroaderStockOptimizer
                 CarCuller culler = UnityEngine.Object.FindObjectOfType<CarCuller>();
                 if (culler == null)
                 {
-                    Main.Log("RefreshCars: CarCuller not found.");
+                    Main.DebugLogThrottled("RefreshCars: CarCuller not found.");
                     return;
                 }
 
@@ -376,7 +407,7 @@ namespace RailroaderStockOptimizer
                     }
                 }
 
-                Main.Log($"RefreshCars: found {records.Count} culler records, tracking {_cars.Count} cars.");
+                Main.DebugLogThrottled($"RefreshCars: found {records.Count} culler records, tracking {_cars.Count} cars.");
             }
             catch (Exception ex)
             {
@@ -668,6 +699,7 @@ namespace RailroaderStockOptimizer
             GUI.DragWindow(new Rect(0f, 0f, 10000f, 20f));
         }
     }
+
     [HarmonyPatch(typeof(Car), "SetCullerDistanceBand")]
     class Patch_CarDistance
     {
