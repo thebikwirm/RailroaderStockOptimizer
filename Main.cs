@@ -105,9 +105,37 @@ namespace RailroaderStockOptimizer
             Settings.PlayerRefreshInterval = GUILayout.HorizontalSlider(Settings.PlayerRefreshInterval, 0.1f, 5f);
 
             GUILayout.Space(8f);
+            GUILayout.Label("<b>Precision / Physics Bubble Tests</b>");
+            Settings.EnablePrecisionWatchdog = GUILayout.Toggle(Settings.EnablePrecisionWatchdog, "Enable precision watchdog dry-run");
+            Settings.PrecisionDryRunOnly = GUILayout.Toggle(Settings.PrecisionDryRunOnly, "Dry-run only: log recommended bubble moves, do not move trains");
+            Settings.ShowPrecisionDetailsInOverlay = GUILayout.Toggle(Settings.ShowPrecisionDetailsInOverlay, "Show precision details in overlay");
+
+            GUILayout.Label($"Bubble Grid Size: {Settings.BubbleGridSize:F0} m");
+            Settings.BubbleGridSize = GUILayout.HorizontalSlider(Settings.BubbleGridSize, 5000f, 50000f);
+
+            GUILayout.Label($"Precision Warning Distance: {Settings.PrecisionWarningDistance:F0} m");
+            Settings.PrecisionWarningDistance = GUILayout.HorizontalSlider(Settings.PrecisionWarningDistance, 1000f, 50000f);
+
+            GUILayout.Label($"Transfer Recommendation Distance: {Settings.PrecisionTransferDistance:F0} m");
+            Settings.PrecisionTransferDistance = GUILayout.HorizontalSlider(Settings.PrecisionTransferDistance, 2000f, 75000f);
+
+            GUILayout.Label($"Emergency Distance: {Settings.PrecisionEmergencyDistance:F0} m");
+            Settings.PrecisionEmergencyDistance = GUILayout.HorizontalSlider(Settings.PrecisionEmergencyDistance, 5000f, 100000f);
+
+            GUILayout.Label($"Better Bubble Margin: {Settings.PrecisionBetterBubbleMargin:F0} m");
+            Settings.PrecisionBetterBubbleMargin = GUILayout.HorizontalSlider(Settings.PrecisionBetterBubbleMargin, 500f, 20000f);
+
+            GUILayout.Space(8f);
             GUILayout.Label($"Tracked cars: {PerfManager.TrackedCount}");
             GUILayout.Label($"Hot: {PerfManager.HotCount}  Warm: {PerfManager.WarmCount}  Cold: {PerfManager.ColdCount}  Frozen: {PerfManager.FrozenCount}");
             GUILayout.Label($"Manager cost last pass: {PerfManager.LastPassMs:F3} ms");
+
+            if (Settings.EnablePrecisionWatchdog)
+            {
+                GUILayout.Label($"Precision batch: warn {PrecisionWatchdog.WarningCount}, recommend {PrecisionWatchdog.TransferRecommendedCount}, emergency {PrecisionWatchdog.EmergencyCount}");
+                GUILayout.Label($"Worst local distance: {PrecisionWatchdog.WorstLocalDistance:F0} m, float step {PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
+                GUILayout.Label($"Last recommendation: {PrecisionWatchdog.LastRecommendation}");
+            }
         }
 
         private static void OnSaveGUI(UnityModManager.ModEntry modEntry)
@@ -223,6 +251,17 @@ namespace RailroaderStockOptimizer
         public float FullRefreshInterval = 1.5f;
         public float PlayerRefreshInterval = 0.5f;
 
+        // Physics bubble / precision test settings.
+        // These are dry-run diagnostics only for now. They do not move trains yet.
+        public bool EnablePrecisionWatchdog = false;
+        public bool PrecisionDryRunOnly = true;
+        public bool ShowPrecisionDetailsInOverlay = true;
+        public float BubbleGridSize = 20000f;
+        public float PrecisionWarningDistance = 10000f;
+        public float PrecisionTransferDistance = 20000f;
+        public float PrecisionEmergencyDistance = 30000f;
+        public float PrecisionBetterBubbleMargin = 5000f;
+
         public override void Save(UnityModManager.ModEntry modEntry)
         {
             Save(this, modEntry);
@@ -239,6 +278,79 @@ namespace RailroaderStockOptimizer
         Warm,
         Cold,
         Frozen
+    }
+
+    public struct Vector3d
+    {
+        public double X;
+        public double Y;
+        public double Z;
+
+        public static readonly Vector3d Zero = new Vector3d(0.0, 0.0, 0.0);
+
+        public Vector3d(double x, double y, double z)
+        {
+            X = x;
+            Y = y;
+            Z = z;
+        }
+
+        public static Vector3d FromVector3(Vector3 value)
+        {
+            return new Vector3d(value.x, value.y, value.z);
+        }
+
+        public Vector3 ToVector3()
+        {
+            return new Vector3((float)X, (float)Y, (float)Z);
+        }
+
+        public static Vector3d operator +(Vector3d a, Vector3d b)
+        {
+            return new Vector3d(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
+        }
+
+        public static Vector3d operator -(Vector3d a, Vector3d b)
+        {
+            return new Vector3d(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
+        }
+
+        public double Magnitude()
+        {
+            return Math.Sqrt(X * X + Y * Y + Z * Z);
+        }
+
+        public static double Distance(Vector3d a, Vector3d b)
+        {
+            return (a - b).Magnitude();
+        }
+
+        public override string ToString()
+        {
+            return $"{X:F1}, {Y:F1}, {Z:F1}";
+        }
+    }
+
+    public sealed class PhysicsBubble
+    {
+        public string Id;
+        public Vector3d GlobalOrigin;
+
+        public PhysicsBubble(string id, Vector3d globalOrigin)
+        {
+            Id = id;
+            GlobalOrigin = globalOrigin;
+        }
+
+        public Vector3 GlobalToLocal(Vector3d globalPosition)
+        {
+            return (globalPosition - GlobalOrigin).ToVector3();
+        }
+
+        public Vector3d LocalToGlobal(Vector3 localPosition)
+        {
+            return GlobalOrigin + Vector3d.FromVector3(localPosition);
+        }
     }
 
     public sealed class CarState
@@ -259,7 +371,135 @@ namespace RailroaderStockOptimizer
         public int LastProcessedFrame;
         public bool WasSleepingForced;
 
+        // Dry-run precision/bubble state. Current implementation treats scene position as global position.
+        public string BubbleId;
+        public Vector3d BubbleOrigin;
+        public Vector3d GlobalPosition;
+        public double PrecisionLocalDistance;
+        public double PrecisionFloatStepMeters;
+        public bool PrecisionWarning;
+        public bool PrecisionTransferRecommended;
+        public bool PrecisionEmergency;
+        public string PrecisionTargetBubbleId;
+
         public string Name => GameObject != null ? GameObject.name : "<null>";
+    }
+
+    public static class PrecisionWatchdog
+    {
+        public const string MainBubbleId = "MainBubble";
+
+        public static int WarningCount { get; private set; }
+        public static int TransferRecommendedCount { get; private set; }
+        public static int EmergencyCount { get; private set; }
+        public static double WorstLocalDistance { get; private set; }
+        public static double WorstFloatStepMeters { get; private set; }
+        public static string LastRecommendation { get; private set; } = "none";
+
+        public static void Reset()
+        {
+            WarningCount = 0;
+            TransferRecommendedCount = 0;
+            EmergencyCount = 0;
+            WorstLocalDistance = 0.0;
+            WorstFloatStepMeters = 0.0;
+            LastRecommendation = "none";
+        }
+
+        public static void BeginBatch()
+        {
+            WarningCount = 0;
+            TransferRecommendedCount = 0;
+            EmergencyCount = 0;
+            WorstLocalDistance = 0.0;
+            WorstFloatStepMeters = 0.0;
+        }
+
+        public static void Evaluate(CarState state)
+        {
+            if (state == null || state.Transform == null || Main.Settings == null)
+                return;
+
+            Settings settings = Main.Settings;
+
+            if (string.IsNullOrEmpty(state.BubbleId))
+            {
+                state.BubbleId = MainBubbleId;
+                state.BubbleOrigin = Vector3d.Zero;
+            }
+
+            // First test stage: use the current Unity scene position as the global position.
+            // Later this should become a real double/global track coordinate that survives bubble moves.
+            Vector3d global = Vector3d.FromVector3(state.Transform.position);
+            state.GlobalPosition = global;
+
+            double localDistance = Vector3d.Distance(global, state.BubbleOrigin);
+            double localMagnitude = Math.Max(Math.Abs(global.X - state.BubbleOrigin.X), Math.Abs(global.Z - state.BubbleOrigin.Z));
+            double floatStep = EstimateFloatStepMeters(localMagnitude);
+
+            state.PrecisionLocalDistance = localDistance;
+            state.PrecisionFloatStepMeters = floatStep;
+            state.PrecisionWarning = localDistance >= settings.PrecisionWarningDistance;
+            state.PrecisionEmergency = localDistance >= settings.PrecisionEmergencyDistance;
+            state.PrecisionTransferRecommended = false;
+            state.PrecisionTargetBubbleId = null;
+
+            if (state.PrecisionWarning)
+                WarningCount++;
+
+            if (state.PrecisionEmergency)
+                EmergencyCount++;
+
+            if (localDistance > WorstLocalDistance)
+            {
+                WorstLocalDistance = localDistance;
+                WorstFloatStepMeters = floatStep;
+            }
+
+            PhysicsBubble best = FindBestBubble(global);
+            double bestDistance = Vector3d.Distance(global, best.GlobalOrigin);
+            bool farEnough = localDistance >= settings.PrecisionTransferDistance;
+            bool betterEnough = bestDistance <= localDistance - settings.PrecisionBetterBubbleMargin;
+            bool differentBubble = !string.Equals(best.Id, state.BubbleId, StringComparison.OrdinalIgnoreCase);
+
+            if (farEnough && betterEnough && differentBubble)
+            {
+                state.PrecisionTransferRecommended = true;
+                state.PrecisionTargetBubbleId = best.Id;
+                TransferRecommendedCount++;
+
+                LastRecommendation = $"{state.Name}: {state.BubbleId} -> {best.Id}, local {localDistance:F0}m -> {bestDistance:F0}m, float step {floatStep * 1000.0:F3}mm";
+                Main.DebugLogThrottled("Precision watchdog dry-run recommends bubble transfer: " + LastRecommendation);
+
+                if (!settings.PrecisionDryRunOnly)
+                {
+                    Main.DebugLogThrottled("Precision watchdog real transfer is not implemented yet. Staying in dry-run behavior.");
+                }
+            }
+        }
+
+        public static PhysicsBubble FindBestBubble(Vector3d globalPosition)
+        {
+            float rawGrid = Main.Settings != null ? Main.Settings.BubbleGridSize : 20000f;
+            double grid = Math.Max(1000.0, rawGrid);
+
+            double originX = Math.Round(globalPosition.X / grid) * grid;
+            double originZ = Math.Round(globalPosition.Z / grid) * grid;
+
+            string id = $"GridBubble[{originX:F0},{originZ:F0}]";
+            return new PhysicsBubble(id, new Vector3d(originX, 0.0, originZ));
+        }
+
+        public static double EstimateFloatStepMeters(double magnitude)
+        {
+            magnitude = Math.Abs(magnitude);
+            if (magnitude <= 0.0)
+                return 0.0;
+
+            // Single-precision float spacing around this magnitude is roughly 2^(floor(log2(magnitude)) - 23).
+            double exponent = Math.Floor(Math.Log(magnitude, 2.0));
+            return Math.Pow(2.0, exponent - 23.0);
+        }
     }
 
     public static class PerfManager
@@ -289,6 +529,7 @@ namespace RailroaderStockOptimizer
             ColdCount = 0;
             FrozenCount = 0;
             LastPassMs = 0;
+            PrecisionWatchdog.Reset();
         }
 
         public static void RestoreAll()
@@ -383,7 +624,16 @@ namespace RailroaderStockOptimizer
                         IsMoving = false,
                         LastMovingTime = Time.time,
                         LastProcessedFrame = -1,
-                        WasSleepingForced = false
+                        WasSleepingForced = false,
+                        BubbleId = PrecisionWatchdog.MainBubbleId,
+                        BubbleOrigin = Vector3d.Zero,
+                        GlobalPosition = go != null ? Vector3d.FromVector3(go.transform.position) : Vector3d.Zero,
+                        PrecisionLocalDistance = 0.0,
+                        PrecisionFloatStepMeters = 0.0,
+                        PrecisionWarning = false,
+                        PrecisionTransferRecommended = false,
+                        PrecisionEmergency = false,
+                        PrecisionTargetBubbleId = null
                     };
 
                     _cars.Add(state);
@@ -430,6 +680,9 @@ namespace RailroaderStockOptimizer
             int batchDivider = Mathf.Max(1, Main.Settings.BatchDivider);
             int batchSize = Mathf.Max(1, _cars.Count / batchDivider);
 
+            if (Main.Settings.EnablePrecisionWatchdog)
+                PrecisionWatchdog.BeginBatch();
+
             for (int i = 0; i < batchSize; i++)
             {
                 if (_cursor >= _cars.Count)
@@ -441,6 +694,9 @@ namespace RailroaderStockOptimizer
 
                 UpdateTier(state);
                 ApplyOptimizations(state);
+
+                if (Main.Settings.EnablePrecisionWatchdog)
+                    PrecisionWatchdog.Evaluate(state);
             }
 
             HotCount = 0;
@@ -683,7 +939,7 @@ namespace RailroaderStockOptimizer
 
     public class OverlayBehaviour : MonoBehaviour
     {
-        private Rect _windowRect = new Rect(20f, 20f, 260f, 140f);
+        private Rect _windowRect = new Rect(20f, 20f, 360f, 230f);
 
         private void OnGUI()
         {
@@ -701,6 +957,16 @@ namespace RailroaderStockOptimizer
             GUILayout.Label($"Cold: {PerfManager.ColdCount}");
             GUILayout.Label($"Frozen: {PerfManager.FrozenCount}");
             GUILayout.Label($"Last pass: {PerfManager.LastPassMs:F3} ms");
+
+            if (Main.Settings.EnablePrecisionWatchdog && Main.Settings.ShowPrecisionDetailsInOverlay)
+            {
+                GUILayout.Space(4f);
+                GUILayout.Label("--- Precision watchdog ---");
+                GUILayout.Label($"Warn: {PrecisionWatchdog.WarningCount}  Move: {PrecisionWatchdog.TransferRecommendedCount}  Emergency: {PrecisionWatchdog.EmergencyCount}");
+                GUILayout.Label($"Worst local: {PrecisionWatchdog.WorstLocalDistance:F0} m");
+                GUILayout.Label($"Float step: {PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
+                GUILayout.Label($"Last: {PrecisionWatchdog.LastRecommendation}");
+            }
 
             GUI.DragWindow(new Rect(0f, 0f, 10000f, 20f));
         }
