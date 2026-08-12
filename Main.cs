@@ -1629,15 +1629,21 @@ namespace RailroaderStockOptimizer
 
     public class OverlayBehaviour : MonoBehaviour
     {
-        private Rect _windowRect = new Rect(20f, 20f, 560f, 720f);
+        private Rect _windowRect = new Rect(20f, 20f, 900f, 540f);
         private Vector2 _scroll;
+        private GUIStyle _label;
+        private GUIStyle _header;
+        private GUIStyle _box;
 
         private void OnGUI()
         {
             if (!Main.Enabled) return;
             if (!Main.Settings.EnableOverlay) return;
 
-            float maxHeight = Mathf.Max(240f, Screen.height - 60f);
+            float maxWidth = Mathf.Max(560f, Screen.width - 40f);
+            float maxHeight = Mathf.Max(300f, Screen.height - 60f);
+            if (_windowRect.width > maxWidth)
+                _windowRect.width = maxWidth;
             if (_windowRect.height > maxHeight)
                 _windowRect.height = maxHeight;
 
@@ -1646,91 +1652,167 @@ namespace RailroaderStockOptimizer
 
         private void DrawWindow(int id)
         {
-            float scrollHeight = Mathf.Max(160f, _windowRect.height - 50f);
-            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Width(540f), GUILayout.Height(scrollHeight));
+            EnsureStyles();
 
-            GUILayout.Label($"Tracked: {PerfManager.TrackedCount}");
-            GUILayout.Label($"Hot: {PerfManager.HotCount}");
-            GUILayout.Label($"Warm: {PerfManager.WarmCount}");
-            GUILayout.Label($"Cold: {PerfManager.ColdCount}");
-            GUILayout.Label($"Frozen: {PerfManager.FrozenCount}");
-            GUILayout.Label($"Last pass: {PerfManager.LastPassMs:F3} ms");
+            float scrollWidth = Mathf.Max(540f, _windowRect.width - 24f);
+            float scrollHeight = Mathf.Max(160f, _windowRect.height - 34f);
+            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Width(scrollWidth), GUILayout.Height(scrollHeight));
+
+            DrawTopColumns(scrollWidth);
 
             if (Main.Settings.EnablePrecisionWatchdog && Main.Settings.ShowPrecisionDetailsInOverlay)
             {
-                GUILayout.Space(4f);
-                GUILayout.Label("--- Precision watchdog ---");
-                GUILayout.Label($"Eval: {PrecisionWatchdog.EvaluatedCount}  Live: {PrecisionWatchdog.NonZeroSampleCount}  Zero: {PrecisionWatchdog.ZeroSampleCount}");
-                GUILayout.Label($"Warn: {PrecisionWatchdog.WarningCount}  Move: {PrecisionWatchdog.TransferRecommendedCount}  Emergency: {PrecisionWatchdog.EmergencyCount}");
-                GUILayout.Label($"Current batch worst: {PrecisionWatchdog.WorstLocalDistance:F0} m, float step {PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
-                GUILayout.Label($"Last rec status: {PrecisionWatchdog.LastRecommendationStatus}");
-                GUILayout.Label($"Last rec age: {PrecisionWatchdog.LastRecommendationAgeSeconds:F1}s");
-                GUILayout.Label($"Last rec original: {PrecisionWatchdog.LastRecommendationOriginalText}");
-                GUILayout.Label($"Last rec current: {PrecisionWatchdog.LastRecommendationCurrentText}");
-                GUILayout.Label($"Last recommendation: {PrecisionWatchdog.LastRecommendation}");
+                DrawRecommendationAndSamples(scrollWidth);
 
                 if (Main.Settings.EnableConsistDryRun)
-                {
-                    GUILayout.Space(4f);
-                    GUILayout.Label("--- Coupled-consist dry-run, cached positions ---");
-                    GUILayout.Label($"Source: {ConsistDryRun.SourceCarCount}  Live now: {ConsistDryRun.LiveNowCarCount}  Cached usable: {ConsistDryRun.CachedUsableCarCount}  Expired: {ConsistDryRun.ExpiredCacheCount}");
-                    GUILayout.Label($"Groups: {ConsistDryRun.GroupCount}  Largest coupled: {ConsistDryRun.LargestGroupSize}  Move groups: {ConsistDryRun.RecommendedGroupCount}");
-                    GUILayout.Label($"Worst group: {ConsistDryRun.WorstGroupLocalDistance:F0} m, float step {ConsistDryRun.WorstGroupFloatStepMeters * 1000.0:F3} mm");
-                    GUILayout.Label($"Last group: {ConsistDryRun.LastGroupSummary}");
-                    GUILayout.Label($"Last group move: {ConsistDryRun.LastRecommendation}");
-                    GUILayout.Label($"Rebuild age: {ConsistDryRun.LastRebuildAgeSeconds:F1}s, reason: {ConsistDryRun.LastRebuildReason}");
-
-                    GUILayout.Space(4f);
-                    GUILayout.Label("--- Consist transfer plan dry-run ---");
-                    GUILayout.Label($"Plan age: {ConsistDryRun.TransferPlanAgeSeconds:F1}s");
-                    GUILayout.Label($"Plan summary: {ConsistDryRun.TransferPlanSummary}");
-                    DrawMultiline(ConsistDryRun.TransferPlanDetails);
-                }
-
-                GUILayout.Space(4f);
-                GUILayout.Label("--- Sampled live car, slowed ---");
-                GUILayout.Label($"Car: {PrecisionWatchdog.DisplayCarName}");
-                GUILayout.Label($"Position source: {PrecisionWatchdog.DisplayPositionSource}");
-                GUILayout.Label($"Transform: {PrecisionWatchdog.DisplayTransformPositionText}");
-                GUILayout.Label($"Rigidbody: {PrecisionWatchdog.DisplayRigidbodyPositionText}");
-                GUILayout.Label($"Renderer bounds: {PrecisionWatchdog.DisplayRendererBoundsCenterText}");
-                GUILayout.Label($"Chosen/global test: {PrecisionWatchdog.DisplayChosenPositionText}");
-                GUILayout.Label($"Sample age: {PrecisionWatchdog.DisplaySampleAgeSeconds:F1}s");
-
-                GUILayout.Space(4f);
-                GUILayout.Label("--- Last non-zero position ---");
-                GUILayout.Label($"Car: {PrecisionWatchdog.LastNonZeroCarName}");
-                GUILayout.Label($"Position source: {PrecisionWatchdog.LastNonZeroPositionSource}");
-                GUILayout.Label($"Transform: {PrecisionWatchdog.LastNonZeroTransformPositionText}");
-                GUILayout.Label($"Rigidbody: {PrecisionWatchdog.LastNonZeroRigidbodyPositionText}");
-                GUILayout.Label($"Renderer bounds: {PrecisionWatchdog.LastNonZeroRendererBoundsCenterText}");
-                GUILayout.Label($"Chosen/global test: {PrecisionWatchdog.LastNonZeroChosenPositionText}");
-                GUILayout.Label($"Local distance: {PrecisionWatchdog.LastNonZeroLocalDistance:F0} m, float step {PrecisionWatchdog.LastNonZeroFloatStepMeters * 1000.0:F3} mm");
-
-                GUILayout.Space(4f);
-                GUILayout.Label("--- Held worst-distance car ---");
-                GUILayout.Label($"Car: {PrecisionWatchdog.HeldWorstCarName}");
-                GUILayout.Label($"Position source: {PrecisionWatchdog.HeldWorstPositionSource}");
-                GUILayout.Label($"Transform: {PrecisionWatchdog.HeldWorstTransformPositionText}");
-                GUILayout.Label($"Rigidbody: {PrecisionWatchdog.HeldWorstRigidbodyPositionText}");
-                GUILayout.Label($"Renderer bounds: {PrecisionWatchdog.HeldWorstRendererBoundsCenterText}");
-                GUILayout.Label($"Chosen/global test: {PrecisionWatchdog.HeldWorstChosenPositionText}");
-                GUILayout.Label($"Local distance: {PrecisionWatchdog.HeldWorstLocalDistance:F0} m, float step {PrecisionWatchdog.HeldWorstFloatStepMeters * 1000.0:F3} mm, age {PrecisionWatchdog.HeldWorstAgeSeconds:F1}s");
+                    DrawTransferPlan(scrollWidth);
             }
 
             GUILayout.EndScrollView();
-
             GUI.DragWindow(new Rect(0f, 0f, 10000f, 20f));
         }
 
-        private static void DrawMultiline(string text)
+        private void EnsureStyles()
         {
-            if (string.IsNullOrEmpty(text))
+            if (_label != null)
                 return;
 
+            _label = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 11,
+                wordWrap = false,
+                margin = new RectOffset(1, 1, 0, 0),
+                padding = new RectOffset(0, 0, 0, 0)
+            };
+
+            _header = new GUIStyle(_label)
+            {
+                fontStyle = FontStyle.Bold
+            };
+
+            _box = new GUIStyle(GUI.skin.box)
+            {
+                margin = new RectOffset(2, 2, 1, 1),
+                padding = new RectOffset(4, 4, 3, 3)
+            };
+        }
+
+        private void DrawTopColumns(float width)
+        {
+            float col = Mathf.Max(180f, (width - 18f) / 3f);
+
+            GUILayout.BeginHorizontal();
+
+            GUILayout.BeginVertical(_box, GUILayout.Width(col));
+            Header("Stock");
+            Row("Tracked", PerfManager.TrackedCount.ToString());
+            Row("Hot/Warm", $"{PerfManager.HotCount}/{PerfManager.WarmCount}");
+            Row("Cold/Frozen", $"{PerfManager.ColdCount}/{PerfManager.FrozenCount}");
+            Row("Pass", $"{PerfManager.LastPassMs:F3} ms");
+            GUILayout.EndVertical();
+
+            GUILayout.BeginVertical(_box, GUILayout.Width(col));
+            Header("Precision");
+            Row("Eval L/Z", $"{PrecisionWatchdog.EvaluatedCount}  {PrecisionWatchdog.NonZeroSampleCount}/{PrecisionWatchdog.ZeroSampleCount}");
+            Row("W/M/E", $"{PrecisionWatchdog.WarningCount}/{PrecisionWatchdog.TransferRecommendedCount}/{PrecisionWatchdog.EmergencyCount}");
+            Row("Batch worst", $"{PrecisionWatchdog.WorstLocalDistance:F0} m");
+            Row("Float step", $"{PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
+            GUILayout.EndVertical();
+
+            GUILayout.BeginVertical(_box, GUILayout.Width(col));
+            Header("Consists");
+            Row("Source/cache", $"{ConsistDryRun.SourceCarCount}/{ConsistDryRun.CachedUsableCarCount}");
+            Row("Live/expired", $"{ConsistDryRun.LiveNowCarCount}/{ConsistDryRun.ExpiredCacheCount}");
+            Row("Groups/largest", $"{ConsistDryRun.GroupCount}/{ConsistDryRun.LargestGroupSize}");
+            Row("Move groups", ConsistDryRun.RecommendedGroupCount.ToString());
+            GUILayout.EndVertical();
+
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawRecommendationAndSamples(float width)
+        {
+            float col = Mathf.Max(260f, (width - 14f) * 0.5f);
+
+            GUILayout.BeginHorizontal();
+
+            GUILayout.BeginVertical(_box, GUILayout.Width(col));
+            Header("Recommendation");
+            Row("Status", PrecisionWatchdog.LastRecommendationStatus);
+            Row("Age", $"{PrecisionWatchdog.LastRecommendationAgeSeconds:F1}s");
+            ClipLabel("Original: " + PrecisionWatchdog.LastRecommendationOriginalText);
+            ClipLabel("Current: " + PrecisionWatchdog.LastRecommendationCurrentText);
+            ClipLabel("Indiv: " + PrecisionWatchdog.LastRecommendation);
+            GUILayout.Space(2f);
+            Header("Consist move");
+            Row("Worst group", $"{ConsistDryRun.WorstGroupLocalDistance:F0} m / {ConsistDryRun.WorstGroupFloatStepMeters * 1000.0:F3} mm");
+            ClipLabel("Group: " + ConsistDryRun.LastGroupSummary);
+            ClipLabel("Move: " + ConsistDryRun.LastRecommendation);
+            Row("Rebuild", $"{ConsistDryRun.LastRebuildAgeSeconds:F1}s, {ConsistDryRun.LastRebuildReason}");
+            GUILayout.EndVertical();
+
+            GUILayout.BeginVertical(_box, GUILayout.Width(col));
+            Header("Samples");
+            Row("Live car", PrecisionWatchdog.DisplayCarName);
+            Row("Source", PrecisionWatchdog.DisplayPositionSource);
+            Row("Pos", PrecisionWatchdog.DisplayChosenPositionText);
+            Row("Age", $"{PrecisionWatchdog.DisplaySampleAgeSeconds:F1}s");
+            GUILayout.Space(2f);
+            Row("Last nonzero", PrecisionWatchdog.LastNonZeroCarName);
+            Row("NZ pos", PrecisionWatchdog.LastNonZeroChosenPositionText);
+            Row("NZ dist", $"{PrecisionWatchdog.LastNonZeroLocalDistance:F0} m / {PrecisionWatchdog.LastNonZeroFloatStepMeters * 1000.0:F3} mm");
+            GUILayout.Space(2f);
+            Row("Held worst", PrecisionWatchdog.HeldWorstCarName);
+            Row("Worst pos", PrecisionWatchdog.HeldWorstChosenPositionText);
+            Row("Worst dist", $"{PrecisionWatchdog.HeldWorstLocalDistance:F0} m / {PrecisionWatchdog.HeldWorstFloatStepMeters * 1000.0:F3} mm");
+            GUILayout.EndVertical();
+
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawTransferPlan(float width)
+        {
+            GUILayout.BeginVertical(_box, GUILayout.Width(width - 8f));
+            Header("Consist transfer plan dry-run");
+            Row("Plan age", $"{ConsistDryRun.TransferPlanAgeSeconds:F1}s");
+            ClipLabel("Summary: " + ConsistDryRun.TransferPlanSummary);
+            DrawMultilineCompact(ConsistDryRun.TransferPlanDetails, 10);
+            GUILayout.EndVertical();
+        }
+
+        private void Header(string text)
+        {
+            GUILayout.Label(text, _header);
+        }
+
+        private void Row(string label, string value)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(label + ":", _label, GUILayout.Width(82f));
+            GUILayout.Label(value ?? "none", _label);
+            GUILayout.EndHorizontal();
+        }
+
+        private void ClipLabel(string text)
+        {
+            GUILayout.Label(text ?? "none", _label);
+        }
+
+        private void DrawMultilineCompact(string text, int maxLines)
+        {
+            if (string.IsNullOrEmpty(text) || text == "none")
+            {
+                ClipLabel("none");
+                return;
+            }
+
             string[] lines = text.Split(new[] { '\n' }, StringSplitOptions.None);
-            for (int i = 0; i < lines.Length; i++)
-                GUILayout.Label(lines[i]);
+            int count = Mathf.Min(maxLines, lines.Length);
+            for (int i = 0; i < count; i++)
+                ClipLabel(lines[i]);
+
+            if (lines.Length > count)
+                ClipLabel($"... plus {lines.Length - count} more line(s)");
         }
     }
 
