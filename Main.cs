@@ -125,7 +125,7 @@ namespace RailroaderStockOptimizer
             GUILayout.Label($"Better Bubble Margin: {Settings.PrecisionBetterBubbleMargin:F0} m");
             Settings.PrecisionBetterBubbleMargin = GUILayout.HorizontalSlider(Settings.PrecisionBetterBubbleMargin, 500f, 20000f);
 
-            GUILayout.Label($"Overlay sample interval: {Settings.PrecisionOverlaySampleInterval:F1} sec");
+            GUILayout.Label($"Overlay live sample interval: {Settings.PrecisionOverlaySampleInterval:F1} sec");
             Settings.PrecisionOverlaySampleInterval = GUILayout.HorizontalSlider(Settings.PrecisionOverlaySampleInterval, 0.5f, 5f);
 
             GUILayout.Label($"Held worst sample time: {Settings.PrecisionOverlayWorstHoldSeconds:F1} sec");
@@ -417,12 +417,13 @@ namespace RailroaderStockOptimizer
         public static double WorstFloatStepMeters { get; private set; }
         public static string LastRecommendation { get; private set; } = "none";
 
-        public static string DisplayCarName { get; private set; } = "none";
+        public static string DisplayCarName { get; private set; } = "waiting for live sample";
         public static string DisplayPositionSource { get; private set; } = "none";
         public static string DisplayTransformPositionText { get; private set; } = "none";
         public static string DisplayRigidbodyPositionText { get; private set; } = "none";
         public static string DisplayRendererBoundsCenterText { get; private set; } = "none";
         public static string DisplayChosenPositionText { get; private set; } = "none";
+        public static float DisplaySampleAgeSeconds => _displaySampleSetTime > 0f ? Time.realtimeSinceStartup - _displaySampleSetTime : 0f;
 
         public static string LastNonZeroCarName { get; private set; } = "none";
         public static string LastNonZeroPositionSource { get; private set; } = "none";
@@ -444,6 +445,7 @@ namespace RailroaderStockOptimizer
         public static float HeldWorstAgeSeconds => _heldWorstSetTime > 0f ? Time.realtimeSinceStartup - _heldWorstSetTime : 0f;
 
         private static float _nextDisplaySampleTime;
+        private static float _displaySampleSetTime;
         private static float _heldWorstSetTime;
         private static float _heldWorstExpireTime;
 
@@ -475,7 +477,7 @@ namespace RailroaderStockOptimizer
 
         private static void ResetPositionDebug()
         {
-            DisplayCarName = "none";
+            DisplayCarName = "waiting for live sample";
             DisplayPositionSource = "none";
             DisplayTransformPositionText = "none";
             DisplayRigidbodyPositionText = "none";
@@ -500,6 +502,7 @@ namespace RailroaderStockOptimizer
             HeldWorstLocalDistance = 0.0;
             HeldWorstFloatStepMeters = 0.0;
             _nextDisplaySampleTime = 0f;
+            _displaySampleSetTime = 0f;
             _heldWorstSetTime = 0f;
             _heldWorstExpireTime = 0f;
         }
@@ -536,7 +539,8 @@ namespace RailroaderStockOptimizer
             else
                 ZeroSampleCount++;
 
-            if (Time.realtimeSinceStartup >= _nextDisplaySampleTime)
+            // Only let live/non-zero cars replace the slowed sample display. Zero culler records are counted above but do not take over the useful UI sample.
+            if (nonZero && Time.realtimeSinceStartup >= _nextDisplaySampleTime)
             {
                 CopyToDisplaySample(state.Name, positionSource, transformPos, rigidbodyPos, rendererBoundsCenter, chosenPosition);
                 float interval = Main.Settings != null ? Main.Settings.PrecisionOverlaySampleInterval : 2f;
@@ -615,6 +619,7 @@ namespace RailroaderStockOptimizer
             DisplayRigidbodyPositionText = FormatVector(rigidbodyPos);
             DisplayRendererBoundsCenterText = FormatVector(rendererBoundsCenter);
             DisplayChosenPositionText = FormatVector(chosenPosition);
+            _displaySampleSetTime = Time.realtimeSinceStartup;
         }
 
         private static void UpdateHeldWorstIfUseful(string carName, string positionSource, Vector3 transformPos, Vector3 rigidbodyPos, Vector3 rendererBoundsCenter, Vector3 chosenPosition, double localDistance, double floatStep, bool nonZero)
@@ -1236,13 +1241,14 @@ namespace RailroaderStockOptimizer
                 GUILayout.Label($"Last recommendation: {PrecisionWatchdog.LastRecommendation}");
 
                 GUILayout.Space(4f);
-                GUILayout.Label("--- Sampled car, slowed ---");
+                GUILayout.Label("--- Sampled live car, slowed ---");
                 GUILayout.Label($"Car: {PrecisionWatchdog.DisplayCarName}");
                 GUILayout.Label($"Position source: {PrecisionWatchdog.DisplayPositionSource}");
                 GUILayout.Label($"Transform: {PrecisionWatchdog.DisplayTransformPositionText}");
                 GUILayout.Label($"Rigidbody: {PrecisionWatchdog.DisplayRigidbodyPositionText}");
                 GUILayout.Label($"Renderer bounds: {PrecisionWatchdog.DisplayRendererBoundsCenterText}");
                 GUILayout.Label($"Chosen/global test: {PrecisionWatchdog.DisplayChosenPositionText}");
+                GUILayout.Label($"Sample age: {PrecisionWatchdog.DisplaySampleAgeSeconds:F1}s");
 
                 GUILayout.Space(4f);
                 GUILayout.Label("--- Last non-zero position ---");
