@@ -137,6 +137,9 @@ namespace RailroaderStockOptimizer
             GUILayout.Label($"Cached car position max age: {Settings.ConsistCachedPositionMaxAge:F0} sec");
             Settings.ConsistCachedPositionMaxAge = GUILayout.HorizontalSlider(Settings.ConsistCachedPositionMaxAge, 5f, 180f);
 
+            GUILayout.Label($"Transfer plan hold time: {Settings.TransferPlanHoldSeconds:F0} sec");
+            Settings.TransferPlanHoldSeconds = GUILayout.HorizontalSlider(Settings.TransferPlanHoldSeconds, 5f, 120f);
+
             GUILayout.Space(8f);
             GUILayout.Label($"Tracked cars: {PerfManager.TrackedCount}");
             GUILayout.Label($"Hot: {PerfManager.HotCount}  Warm: {PerfManager.WarmCount}  Cold: {PerfManager.ColdCount}  Frozen: {PerfManager.FrozenCount}");
@@ -149,8 +152,10 @@ namespace RailroaderStockOptimizer
                 GUILayout.Label($"Current batch worst: {PrecisionWatchdog.WorstLocalDistance:F0} m, float step {PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
                 GUILayout.Label($"Held worst: {PrecisionWatchdog.HeldWorstLocalDistance:F0} m, {PrecisionWatchdog.HeldWorstCarName}");
                 GUILayout.Label($"Last non-zero: {PrecisionWatchdog.LastNonZeroCarName}, {PrecisionWatchdog.LastNonZeroChosenPositionText}");
-                GUILayout.Label($"Last recommendation age: {PrecisionWatchdog.LastRecommendationAgeSeconds:F1}s");
-                GUILayout.Label($"Last recommendation cache: {PrecisionWatchdog.LastRecommendedCarCacheText}");
+                GUILayout.Label($"Last rec status: {PrecisionWatchdog.LastRecommendationStatus}");
+                GUILayout.Label($"Last rec age: {PrecisionWatchdog.LastRecommendationAgeSeconds:F1}s");
+                GUILayout.Label($"Last rec original: {PrecisionWatchdog.LastRecommendationOriginalText}");
+                GUILayout.Label($"Last rec current: {PrecisionWatchdog.LastRecommendationCurrentText}");
                 GUILayout.Label($"Last recommendation: {PrecisionWatchdog.LastRecommendation}");
             }
 
@@ -159,6 +164,7 @@ namespace RailroaderStockOptimizer
                 GUILayout.Label($"Consists: groups {ConsistDryRun.GroupCount}, cached cars {ConsistDryRun.CachedUsableCarCount}, largest {ConsistDryRun.LargestGroupSize}, moves {ConsistDryRun.RecommendedGroupCount}");
                 GUILayout.Label($"Last group: {ConsistDryRun.LastGroupSummary}");
                 GUILayout.Label($"Last group recommendation: {ConsistDryRun.LastRecommendation}");
+                GUILayout.Label($"Transfer plan: {ConsistDryRun.TransferPlanSummary}");
             }
         }
 
@@ -286,6 +292,7 @@ namespace RailroaderStockOptimizer
         public float PrecisionOverlayWorstHoldSeconds = 10f;
         public float ConsistDryRunInterval = 2f;
         public float ConsistCachedPositionMaxAge = 60f;
+        public float TransferPlanHoldSeconds = 30f;
 
         public override void Save(UnityModManager.ModEntry modEntry)
         {
@@ -438,7 +445,9 @@ namespace RailroaderStockOptimizer
         public static string LastRecommendedCarId { get; private set; }
         public static string LastRecommendedCarName { get; private set; } = "none";
         public static float LastRecommendationAgeSeconds => _lastRecommendationSetTime > 0f ? Time.realtimeSinceStartup - _lastRecommendationSetTime : 0f;
-        public static string LastRecommendedCarCacheText { get; private set; } = "none";
+        public static string LastRecommendationStatus { get; private set; } = "none";
+        public static string LastRecommendationOriginalText { get; private set; } = "none";
+        public static string LastRecommendationCurrentText { get; private set; } = "none";
 
         public static string DisplayCarName { get; private set; } = "waiting for live sample";
         public static string DisplayPositionSource { get; private set; } = "none";
@@ -472,6 +481,11 @@ namespace RailroaderStockOptimizer
         private static float _heldWorstSetTime;
         private static float _heldWorstExpireTime;
         private static float _lastRecommendationSetTime;
+        private static Vector3 _lastRecommendationOriginalPosition;
+        private static double _lastRecommendationOriginalLocalDistance;
+        private static double _lastRecommendationOriginalTargetDistance;
+        private static string _lastRecommendationOriginalBubbleId;
+        private static string _lastRecommendationTargetBubbleId;
 
         public static void Reset()
         {
@@ -486,8 +500,15 @@ namespace RailroaderStockOptimizer
             LastRecommendation = "none";
             LastRecommendedCarId = null;
             LastRecommendedCarName = "none";
-            LastRecommendedCarCacheText = "none";
+            LastRecommendationStatus = "none";
+            LastRecommendationOriginalText = "none";
+            LastRecommendationCurrentText = "none";
             _lastRecommendationSetTime = 0f;
+            _lastRecommendationOriginalPosition = Vector3.zero;
+            _lastRecommendationOriginalLocalDistance = 0.0;
+            _lastRecommendationOriginalTargetDistance = 0.0;
+            _lastRecommendationOriginalBubbleId = null;
+            _lastRecommendationTargetBubbleId = null;
             ResetPositionDebug();
         }
 
@@ -623,7 +644,7 @@ namespace RailroaderStockOptimizer
 
             PhysicsBubble best = FindBestBubble(global);
             double bestDistance = Vector3d.Distance(global, best.GlobalOrigin);
-            bool farEnough = localDistance >= settings.PrecisionTransferDistance;
+            bool farEnough = nonZero && localDistance >= settings.PrecisionTransferDistance;
             bool betterEnough = bestDistance <= localDistance - settings.PrecisionBetterBubbleMargin;
             bool differentBubble = !string.Equals(best.Id, state.BubbleId, StringComparison.OrdinalIgnoreCase);
 
@@ -636,9 +657,18 @@ namespace RailroaderStockOptimizer
                 LastRecommendedCarId = state.CarId;
                 LastRecommendedCarName = state.Name;
                 _lastRecommendationSetTime = Time.realtimeSinceStartup;
+                _lastRecommendationOriginalPosition = chosenPosition;
+                _lastRecommendationOriginalLocalDistance = localDistance;
+                _lastRecommendationOriginalTargetDistance = bestDistance;
+                _lastRecommendationOriginalBubbleId = state.BubbleId;
+                _lastRecommendationTargetBubbleId = best.Id;
+                LastRecommendationOriginalText = $"{state.BubbleId} -> {best.Id}, pos {FormatVector(chosenPosition)}, local {localDistance:F0}m -> {bestDistance:F0}m";
                 LastRecommendation = $"{state.Name}: {state.BubbleId} -> {best.Id}, local {localDistance:F0}m -> {bestDistance:F0}m, source {positionSource}, float step {floatStep * 1000.0:F3}mm";
-                RefreshLastRecommendedCarCacheStatus(state);
-                ConsistDryRun.RequestImmediateRebuild("new individual recommendation: " + state.Name);
+
+                RefreshLastRecommendationStatus(state);
+                if (LastRecommendationStatus.StartsWith("active", StringComparison.OrdinalIgnoreCase))
+                    ConsistDryRun.RequestImmediateRebuild("new active individual recommendation: " + state.Name);
+
                 Main.DebugLogThrottled("Precision watchdog dry-run recommends bubble transfer: " + LastRecommendation);
 
                 if (!settings.PrecisionDryRunOnly)
@@ -646,17 +676,26 @@ namespace RailroaderStockOptimizer
             }
         }
 
-        public static void UpdateLastRecommendedCarCacheStatus(IReadOnlyList<CarState> states)
+        public static bool IsLastRecommendationActive()
+        {
+            return !string.IsNullOrEmpty(LastRecommendedCarId) &&
+                   LastRecommendationStatus != null &&
+                   LastRecommendationStatus.StartsWith("active", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static void UpdateLastRecommendationStatus(IReadOnlyList<CarState> states)
         {
             if (string.IsNullOrEmpty(LastRecommendedCarId))
             {
-                LastRecommendedCarCacheText = "none";
+                LastRecommendationStatus = "none";
+                LastRecommendationCurrentText = "none";
                 return;
             }
 
             if (states == null)
             {
-                LastRecommendedCarCacheText = LastRecommendedCarName + ": unknown, no states";
+                LastRecommendationStatus = "unknown: no states";
+                LastRecommendationCurrentText = "none";
                 return;
             }
 
@@ -666,25 +705,67 @@ namespace RailroaderStockOptimizer
                 if (state == null || !string.Equals(state.CarId, LastRecommendedCarId, StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                RefreshLastRecommendedCarCacheStatus(state);
+                RefreshLastRecommendationStatus(state);
                 return;
             }
 
-            LastRecommendedCarCacheText = LastRecommendedCarName + ": not currently tracked";
+            LastRecommendationStatus = "invalid: car not currently tracked";
+            LastRecommendationCurrentText = LastRecommendedCarName + ": not tracked";
         }
 
-        private static void RefreshLastRecommendedCarCacheStatus(CarState state)
+        private static void RefreshLastRecommendationStatus(CarState state)
         {
             if (state == null || !state.HasCachedPosition)
             {
-                LastRecommendedCarCacheText = LastRecommendedCarName + ": not cached";
+                LastRecommendationStatus = "invalid: recommended car has no cached position";
+                LastRecommendationCurrentText = LastRecommendedCarName + ": no cache";
                 return;
             }
 
-            float age = Time.realtimeSinceStartup - state.CachedPositionTime;
-            float maxAge = Main.Settings != null ? Main.Settings.ConsistCachedPositionMaxAge : 60f;
-            string valid = age <= maxAge ? "cached valid" : "cached expired";
-            LastRecommendedCarCacheText = $"{state.Name}: {valid}, age {age:F1}s, pos {FormatVector(state.CachedPosition)}";
+            Settings settings = Main.Settings;
+            float now = Time.realtimeSinceStartup;
+            float age = now - state.CachedPositionTime;
+            float maxAge = settings != null ? settings.ConsistCachedPositionMaxAge : 60f;
+            if (age > maxAge)
+            {
+                LastRecommendationStatus = "expired: cached position too old";
+                LastRecommendationCurrentText = $"{state.Name}: cache age {age:F1}s > {maxAge:F1}s";
+                return;
+            }
+
+            Vector3d current = Vector3d.FromVector3(state.CachedPosition);
+            Vector3d origin = state.BubbleOrigin;
+            string currentBubbleId = string.IsNullOrEmpty(state.BubbleId) ? MainBubbleId : state.BubbleId;
+            double currentLocal = Vector3d.Distance(current, origin);
+            PhysicsBubble best = FindBestBubble(current);
+            double bestDistance = Vector3d.Distance(current, best.GlobalOrigin);
+            double margin = settings != null ? settings.PrecisionBetterBubbleMargin : 5000.0;
+            double transfer = settings != null ? settings.PrecisionTransferDistance : 20000.0;
+            bool farEnough = currentLocal >= transfer;
+            bool betterEnough = bestDistance <= currentLocal - margin;
+            bool different = !string.Equals(best.Id, currentBubbleId, StringComparison.OrdinalIgnoreCase);
+
+            LastRecommendationCurrentText = $"{state.Name}: pos {FormatVector(state.CachedPosition)}, age {age:F1}s, local {currentLocal:F0}m -> {bestDistance:F0}m via {best.Id}";
+
+            if (!farEnough)
+            {
+                LastRecommendationStatus = "stale: car now inside transfer distance";
+                return;
+            }
+
+            if (!different)
+            {
+                LastRecommendationStatus = "stale: best bubble now equals current bubble";
+                return;
+            }
+
+            if (!betterEnough)
+            {
+                LastRecommendationStatus = "stale: target improvement below margin";
+                return;
+            }
+
+            LastRecommendationStatus = "active: still recommends transfer";
         }
 
         private static void CopyToDisplaySample(string carName, string positionSource, Vector3 transformPos, Vector3 rigidbodyPos, Vector3 rendererBoundsCenter, Vector3 chosenPosition)
@@ -852,10 +933,15 @@ namespace RailroaderStockOptimizer
         public static string LastRecommendation { get; private set; } = "none";
         public static string WorstGroupSummary { get; private set; } = "none";
         public static string LastRebuildReason { get; private set; } = "none";
+        public static string TransferPlanSummary { get; private set; } = "none";
+        public static string TransferPlanDetails { get; private set; } = "none";
+        public static float TransferPlanAgeSeconds => _transferPlanSetTime > 0f ? Time.realtimeSinceStartup - _transferPlanSetTime : 0f;
         public static float LastRebuildAgeSeconds => _lastRebuildTime > 0f ? Time.realtimeSinceStartup - _lastRebuildTime : 0f;
 
         private static float _nextRebuildTime;
         private static float _lastRebuildTime;
+        private static float _transferPlanSetTime;
+        private static float _transferPlanExpireTime;
         private static bool _forceRebuild;
         private static string _forceReason = "none";
 
@@ -874,8 +960,12 @@ namespace RailroaderStockOptimizer
             LastRecommendation = "none";
             WorstGroupSummary = "none";
             LastRebuildReason = "none";
+            TransferPlanSummary = "none";
+            TransferPlanDetails = "none";
             _nextRebuildTime = 0f;
             _lastRebuildTime = 0f;
+            _transferPlanSetTime = 0f;
+            _transferPlanExpireTime = 0f;
             _forceRebuild = false;
             _forceReason = "none";
         }
@@ -892,9 +982,17 @@ namespace RailroaderStockOptimizer
             if (Main.Settings == null || !Main.Settings.EnableConsistDryRun)
                 return;
 
-            PrecisionWatchdog.UpdateLastRecommendedCarCacheStatus(carStates);
+            PrecisionWatchdog.UpdateLastRecommendationStatus(carStates);
 
             float now = Time.realtimeSinceStartup;
+            if (_transferPlanSetTime > 0f && now >= _transferPlanExpireTime)
+            {
+                TransferPlanSummary = "expired";
+                TransferPlanDetails = "none";
+                _transferPlanSetTime = 0f;
+                _transferPlanExpireTime = 0f;
+            }
+
             if (!_forceRebuild && now < _nextRebuildTime)
                 return;
 
@@ -1087,7 +1185,44 @@ namespace RailroaderStockOptimizer
             {
                 RecommendedGroupCount++;
                 LastRecommendation = $"{cachedStates.Count}/{coupledCount} cached cars: {currentBubbleId} -> {best.Id}, center local {localDistance:F0}m -> {bestDistance:F0}m, worst car {worstCarDistance:F0}m, float step {floatStep * 1000.0:F3}mm";
+                BuildTransferPlan(cachedStates, coupledCount, currentBubbleId, currentOrigin, best, center, localDistance, bestDistance, worstCarName, worstCarDistance, floatStep, oldestAge);
             }
+        }
+
+        private static void BuildTransferPlan(List<CarState> cachedStates, int coupledCount, string currentBubbleId, Vector3d currentOrigin, PhysicsBubble targetBubble, Vector3d center, double localDistance, double targetDistance, string worstCarName, double worstCarDistance, double floatStep, float oldestAge)
+        {
+            if (cachedStates == null || cachedStates.Count == 0 || targetBubble == null)
+                return;
+
+            TransferPlanSummary = $"{cachedStates.Count}/{coupledCount} cached cars: {currentBubbleId} -> {targetBubble.Id}, center {localDistance:F0}m -> {targetDistance:F0}m";
+
+            List<string> lines = new List<string>();
+            lines.Add("DRY-RUN ONLY - no transforms or rigidbodies moved");
+            lines.Add($"Current bubble: {currentBubbleId} origin {FormatVector(currentOrigin)}");
+            lines.Add($"Target bubble: {targetBubble.Id} origin {FormatVector(targetBubble.GlobalOrigin)}");
+            lines.Add($"Center global: {FormatVector(center)}");
+            lines.Add($"Worst car: {worstCarDistance:F0}m ({worstCarName})");
+            lines.Add($"Float step now: {floatStep * 1000.0:F3}mm, oldest cached sample {oldestAge:F1}s");
+            lines.Add("Cars to move, first 6 shown:");
+
+            int limit = Mathf.Min(6, cachedStates.Count);
+            for (int i = 0; i < limit; i++)
+            {
+                CarState state = cachedStates[i];
+                Vector3d global = Vector3d.FromVector3(state.CachedPosition);
+                Vector3d oldLocal = global - currentOrigin;
+                Vector3 newLocal = targetBubble.GlobalToLocal(global);
+                float age = Time.realtimeSinceStartup - state.CachedPositionTime;
+                lines.Add($"{i + 1}. {state.Name}: global {FormatVector(global)} | old local {FormatVector(oldLocal)} | new local {PrecisionWatchdog.FormatVector(newLocal)} | age {age:F1}s");
+            }
+
+            if (cachedStates.Count > limit)
+                lines.Add($"... plus {cachedStates.Count - limit} more cached car(s)");
+
+            TransferPlanDetails = string.Join("\n", lines.ToArray());
+            _transferPlanSetTime = Time.realtimeSinceStartup;
+            float hold = Main.Settings != null ? Main.Settings.TransferPlanHoldSeconds : 30f;
+            _transferPlanExpireTime = _transferPlanSetTime + Mathf.Max(1f, hold);
         }
 
         private static string FormatVector(Vector3d value)
@@ -1494,7 +1629,7 @@ namespace RailroaderStockOptimizer
 
     public class OverlayBehaviour : MonoBehaviour
     {
-        private Rect _windowRect = new Rect(20f, 20f, 540f, 680f);
+        private Rect _windowRect = new Rect(20f, 20f, 560f, 720f);
         private Vector2 _scroll;
 
         private void OnGUI()
@@ -1512,7 +1647,7 @@ namespace RailroaderStockOptimizer
         private void DrawWindow(int id)
         {
             float scrollHeight = Mathf.Max(160f, _windowRect.height - 50f);
-            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Width(520f), GUILayout.Height(scrollHeight));
+            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Width(540f), GUILayout.Height(scrollHeight));
 
             GUILayout.Label($"Tracked: {PerfManager.TrackedCount}");
             GUILayout.Label($"Hot: {PerfManager.HotCount}");
@@ -1528,8 +1663,10 @@ namespace RailroaderStockOptimizer
                 GUILayout.Label($"Eval: {PrecisionWatchdog.EvaluatedCount}  Live: {PrecisionWatchdog.NonZeroSampleCount}  Zero: {PrecisionWatchdog.ZeroSampleCount}");
                 GUILayout.Label($"Warn: {PrecisionWatchdog.WarningCount}  Move: {PrecisionWatchdog.TransferRecommendedCount}  Emergency: {PrecisionWatchdog.EmergencyCount}");
                 GUILayout.Label($"Current batch worst: {PrecisionWatchdog.WorstLocalDistance:F0} m, float step {PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
-                GUILayout.Label($"Last recommendation age: {PrecisionWatchdog.LastRecommendationAgeSeconds:F1}s");
-                GUILayout.Label($"Last recommended cache: {PrecisionWatchdog.LastRecommendedCarCacheText}");
+                GUILayout.Label($"Last rec status: {PrecisionWatchdog.LastRecommendationStatus}");
+                GUILayout.Label($"Last rec age: {PrecisionWatchdog.LastRecommendationAgeSeconds:F1}s");
+                GUILayout.Label($"Last rec original: {PrecisionWatchdog.LastRecommendationOriginalText}");
+                GUILayout.Label($"Last rec current: {PrecisionWatchdog.LastRecommendationCurrentText}");
                 GUILayout.Label($"Last recommendation: {PrecisionWatchdog.LastRecommendation}");
 
                 if (Main.Settings.EnableConsistDryRun)
@@ -1542,6 +1679,12 @@ namespace RailroaderStockOptimizer
                     GUILayout.Label($"Last group: {ConsistDryRun.LastGroupSummary}");
                     GUILayout.Label($"Last group move: {ConsistDryRun.LastRecommendation}");
                     GUILayout.Label($"Rebuild age: {ConsistDryRun.LastRebuildAgeSeconds:F1}s, reason: {ConsistDryRun.LastRebuildReason}");
+
+                    GUILayout.Space(4f);
+                    GUILayout.Label("--- Consist transfer plan dry-run ---");
+                    GUILayout.Label($"Plan age: {ConsistDryRun.TransferPlanAgeSeconds:F1}s");
+                    GUILayout.Label($"Plan summary: {ConsistDryRun.TransferPlanSummary}");
+                    DrawMultiline(ConsistDryRun.TransferPlanDetails);
                 }
 
                 GUILayout.Space(4f);
@@ -1578,6 +1721,16 @@ namespace RailroaderStockOptimizer
             GUILayout.EndScrollView();
 
             GUI.DragWindow(new Rect(0f, 0f, 10000f, 20f));
+        }
+
+        private static void DrawMultiline(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return;
+
+            string[] lines = text.Split(new[] { '\n' }, StringSplitOptions.None);
+            for (int i = 0; i < lines.Length; i++)
+                GUILayout.Label(lines[i]);
         }
     }
 
