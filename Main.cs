@@ -109,6 +109,7 @@ namespace RailroaderStockOptimizer
             Settings.EnablePrecisionWatchdog = GUILayout.Toggle(Settings.EnablePrecisionWatchdog, "Enable precision watchdog dry-run");
             Settings.PrecisionDryRunOnly = GUILayout.Toggle(Settings.PrecisionDryRunOnly, "Dry-run only: log recommended bubble moves, do not move trains");
             Settings.ShowPrecisionDetailsInOverlay = GUILayout.Toggle(Settings.ShowPrecisionDetailsInOverlay, "Show precision details in overlay");
+            Settings.EnableConsistDryRun = GUILayout.Toggle(Settings.EnableConsistDryRun, "Enable real coupled-consist dry-run");
 
             GUILayout.Label($"Bubble Grid Size: {Settings.BubbleGridSize:F0} m");
             Settings.BubbleGridSize = GUILayout.HorizontalSlider(Settings.BubbleGridSize, 5000f, 50000f);
@@ -131,6 +132,9 @@ namespace RailroaderStockOptimizer
             GUILayout.Label($"Held worst sample time: {Settings.PrecisionOverlayWorstHoldSeconds:F1} sec");
             Settings.PrecisionOverlayWorstHoldSeconds = GUILayout.HorizontalSlider(Settings.PrecisionOverlayWorstHoldSeconds, 2f, 30f);
 
+            GUILayout.Label($"Consist dry-run rebuild interval: {Settings.ConsistDryRunInterval:F1} sec");
+            Settings.ConsistDryRunInterval = GUILayout.HorizontalSlider(Settings.ConsistDryRunInterval, 0.5f, 10f);
+
             GUILayout.Space(8f);
             GUILayout.Label($"Tracked cars: {PerfManager.TrackedCount}");
             GUILayout.Label($"Hot: {PerfManager.HotCount}  Warm: {PerfManager.WarmCount}  Cold: {PerfManager.ColdCount}  Frozen: {PerfManager.FrozenCount}");
@@ -144,6 +148,13 @@ namespace RailroaderStockOptimizer
                 GUILayout.Label($"Held worst: {PrecisionWatchdog.HeldWorstLocalDistance:F0} m, {PrecisionWatchdog.HeldWorstCarName}");
                 GUILayout.Label($"Last non-zero: {PrecisionWatchdog.LastNonZeroCarName}, {PrecisionWatchdog.LastNonZeroChosenPositionText}");
                 GUILayout.Label($"Last recommendation: {PrecisionWatchdog.LastRecommendation}");
+            }
+
+            if (Settings.EnablePrecisionWatchdog && Settings.EnableConsistDryRun)
+            {
+                GUILayout.Label($"Consists: groups {ConsistDryRun.GroupCount}, live cars {ConsistDryRun.LiveCarCount}, largest {ConsistDryRun.LargestGroupSize}, moves {ConsistDryRun.RecommendedGroupCount}");
+                GUILayout.Label($"Last group: {ConsistDryRun.LastGroupSummary}");
+                GUILayout.Label($"Last group recommendation: {ConsistDryRun.LastRecommendation}");
             }
         }
 
@@ -265,6 +276,7 @@ namespace RailroaderStockOptimizer
         public bool EnablePrecisionWatchdog = false;
         public bool PrecisionDryRunOnly = true;
         public bool ShowPrecisionDetailsInOverlay = true;
+        public bool EnableConsistDryRun = true;
         public float BubbleGridSize = 20000f;
         public float PrecisionWarningDistance = 10000f;
         public float PrecisionTransferDistance = 20000f;
@@ -272,6 +284,7 @@ namespace RailroaderStockOptimizer
         public float PrecisionBetterBubbleMargin = 5000f;
         public float PrecisionOverlaySampleInterval = 2f;
         public float PrecisionOverlayWorstHoldSeconds = 10f;
+        public float ConsistDryRunInterval = 2f;
 
         public override void Save(UnityModManager.ModEntry modEntry)
         {
@@ -728,7 +741,7 @@ namespace RailroaderStockOptimizer
             return true;
         }
 
-        private static bool IsMeaningfullyNonZero(Vector3 value)
+        public static bool IsMeaningfullyNonZero(Vector3 value)
         {
             return value.sqrMagnitude > 0.25f;
         }
@@ -762,6 +775,219 @@ namespace RailroaderStockOptimizer
         }
     }
 
+    public static class ConsistDryRun
+    {
+        public static int SourceCarCount { get; private set; }
+        public static int LiveCarCount { get; private set; }
+        public static int GroupCount { get; private set; }
+        public static int LargestGroupSize { get; private set; }
+        public static int RecommendedGroupCount { get; private set; }
+        public static double WorstGroupLocalDistance { get; private set; }
+        public static double WorstGroupFloatStepMeters { get; private set; }
+        public static string LastGroupSummary { get; private set; } = "none";
+        public static string LastRecommendation { get; private set; } = "none";
+        public static string WorstGroupSummary { get; private set; } = "none";
+        public static float LastRebuildAgeSeconds => _lastRebuildTime > 0f ? Time.realtimeSinceStartup - _lastRebuildTime : 0f;
+
+        private static float _nextRebuildTime;
+        private static float _lastRebuildTime;
+
+        public static void Reset()
+        {
+            SourceCarCount = 0;
+            LiveCarCount = 0;
+            GroupCount = 0;
+            LargestGroupSize = 0;
+            RecommendedGroupCount = 0;
+            WorstGroupLocalDistance = 0.0;
+            WorstGroupFloatStepMeters = 0.0;
+            LastGroupSummary = "none";
+            LastRecommendation = "none";
+            WorstGroupSummary = "none";
+            _nextRebuildTime = 0f;
+            _lastRebuildTime = 0f;
+        }
+
+        public static void Tick(IReadOnlyList<CarState> carStates)
+        {
+            if (Main.Settings == null || !Main.Settings.EnableConsistDryRun)
+                return;
+
+            float now = Time.realtimeSinceStartup;
+            if (now < _nextRebuildTime)
+                return;
+
+            float interval = Mathf.Max(0.25f, Main.Settings.ConsistDryRunInterval);
+            _nextRebuildTime = now + interval;
+            _lastRebuildTime = now;
+
+            Rebuild(carStates);
+        }
+
+        private static void Rebuild(IReadOnlyList<CarState> carStates)
+        {
+            SourceCarCount = carStates != null ? carStates.Count : 0;
+            LiveCarCount = 0;
+            GroupCount = 0;
+            LargestGroupSize = 0;
+            RecommendedGroupCount = 0;
+            WorstGroupLocalDistance = 0.0;
+            WorstGroupFloatStepMeters = 0.0;
+            LastGroupSummary = "none";
+            LastRecommendation = "none";
+            WorstGroupSummary = "none";
+
+            if (carStates == null || carStates.Count == 0)
+                return;
+
+            Dictionary<string, CarState> stateById = new Dictionary<string, CarState>(carStates.Count);
+            for (int i = 0; i < carStates.Count; i++)
+            {
+                CarState state = carStates[i];
+                if (state == null || state.Car == null || string.IsNullOrEmpty(state.CarId))
+                    continue;
+
+                if (!stateById.ContainsKey(state.CarId))
+                    stateById.Add(state.CarId, state);
+            }
+
+            HashSet<string> processed = new HashSet<string>();
+            List<Car> coupledCars = new List<Car>(32);
+            List<CarState> liveStates = new List<CarState>(32);
+
+            for (int i = 0; i < carStates.Count; i++)
+            {
+                CarState seedState = carStates[i];
+                if (seedState == null || seedState.Car == null || string.IsNullOrEmpty(seedState.CarId))
+                    continue;
+
+                if (processed.Contains(seedState.CarId))
+                    continue;
+
+                coupledCars.Clear();
+                liveStates.Clear();
+                CollectCoupledCars(seedState.Car, coupledCars);
+
+                if (coupledCars.Count == 0)
+                    coupledCars.Add(seedState.Car);
+
+                for (int c = 0; c < coupledCars.Count; c++)
+                {
+                    Car car = coupledCars[c];
+                    if (car == null || string.IsNullOrEmpty(car.id))
+                        continue;
+
+                    processed.Add(car.id);
+
+                    CarState state;
+                    if (!stateById.TryGetValue(car.id, out state))
+                        continue;
+
+                    if (IsLiveForConsist(state))
+                        liveStates.Add(state);
+                }
+
+                if (liveStates.Count == 0)
+                    continue;
+
+                EvaluateGroup(liveStates);
+            }
+        }
+
+        private static void CollectCoupledCars(Car seed, List<Car> output)
+        {
+            output.Clear();
+            if (seed == null)
+                return;
+
+            try
+            {
+                foreach (Car car in seed.EnumerateCoupled(Car.LogicalEnd.A))
+                {
+                    if (car != null && !string.IsNullOrEmpty(car.id))
+                        output.Add(car);
+                }
+            }
+            catch (Exception ex)
+            {
+                Main.DebugLogThrottled("Consist dry-run: EnumerateCoupled failed, using seed car only: " + ex.Message);
+                output.Clear();
+                output.Add(seed);
+            }
+        }
+
+        private static bool IsLiveForConsist(CarState state)
+        {
+            return state != null && PrecisionWatchdog.IsMeaningfullyNonZero(state.PrecisionChosenPosition);
+        }
+
+        private static void EvaluateGroup(List<CarState> liveStates)
+        {
+            if (liveStates == null || liveStates.Count == 0)
+                return;
+
+            GroupCount++;
+            LiveCarCount += liveStates.Count;
+            if (liveStates.Count > LargestGroupSize)
+                LargestGroupSize = liveStates.Count;
+
+            Vector3d sum = Vector3d.Zero;
+            double worstCarDistance = 0.0;
+            string worstCarName = "none";
+
+            for (int i = 0; i < liveStates.Count; i++)
+            {
+                CarState state = liveStates[i];
+                Vector3d pos = Vector3d.FromVector3(state.PrecisionChosenPosition);
+                sum += pos;
+
+                double carDistance = Vector3d.Distance(pos, state.BubbleOrigin);
+                if (carDistance > worstCarDistance)
+                {
+                    worstCarDistance = carDistance;
+                    worstCarName = state.Name;
+                }
+            }
+
+            Vector3d center = new Vector3d(sum.X / liveStates.Count, sum.Y / liveStates.Count, sum.Z / liveStates.Count);
+            CarState first = liveStates[0];
+            Vector3d currentOrigin = first.BubbleOrigin;
+            string currentBubbleId = string.IsNullOrEmpty(first.BubbleId) ? PrecisionWatchdog.MainBubbleId : first.BubbleId;
+
+            double localDistance = Vector3d.Distance(center, currentOrigin);
+            double localMagnitude = Math.Max(Math.Abs(center.X - currentOrigin.X), Math.Abs(center.Z - currentOrigin.Z));
+            double floatStep = PrecisionWatchdog.EstimateFloatStepMeters(localMagnitude);
+            PhysicsBubble best = PrecisionWatchdog.FindBestBubble(center);
+            double bestDistance = Vector3d.Distance(center, best.GlobalOrigin);
+
+            string groupSummary = $"{first.Name} +{liveStates.Count - 1}, center {FormatVector(center)}, local {localDistance:F0}m, worst car {worstCarDistance:F0}m ({worstCarName})";
+            LastGroupSummary = groupSummary;
+
+            if (localDistance > WorstGroupLocalDistance)
+            {
+                WorstGroupLocalDistance = localDistance;
+                WorstGroupFloatStepMeters = floatStep;
+                WorstGroupSummary = groupSummary;
+            }
+
+            Settings settings = Main.Settings;
+            bool farEnough = localDistance >= settings.PrecisionTransferDistance;
+            bool betterEnough = bestDistance <= localDistance - settings.PrecisionBetterBubbleMargin;
+            bool differentBubble = !string.Equals(best.Id, currentBubbleId, StringComparison.OrdinalIgnoreCase);
+
+            if (farEnough && betterEnough && differentBubble)
+            {
+                RecommendedGroupCount++;
+                LastRecommendation = $"{liveStates.Count} cars: {currentBubbleId} -> {best.Id}, center local {localDistance:F0}m -> {bestDistance:F0}m, worst car {worstCarDistance:F0}m, float step {floatStep * 1000.0:F3}mm";
+            }
+        }
+
+        private static string FormatVector(Vector3d value)
+        {
+            return $"{value.X:F1}, {value.Y:F1}, {value.Z:F1}";
+        }
+    }
+
     public static class PerfManager
     {
         private static readonly List<CarState> _cars = new List<CarState>(1024);
@@ -790,6 +1016,7 @@ namespace RailroaderStockOptimizer
             FrozenCount = 0;
             LastPassMs = 0;
             PrecisionWatchdog.Reset();
+            ConsistDryRun.Reset();
         }
 
         public static void RestoreAll()
@@ -987,6 +1214,9 @@ namespace RailroaderStockOptimizer
                         break;
                 }
             }
+
+            if (Main.Settings.EnablePrecisionWatchdog && Main.Settings.EnableConsistDryRun)
+                ConsistDryRun.Tick(_cars);
 
             LastPassMs = (Time.realtimeSinceStartupAsDouble - start) * 1000.0;
         }
@@ -1239,6 +1469,18 @@ namespace RailroaderStockOptimizer
                 GUILayout.Label($"Warn: {PrecisionWatchdog.WarningCount}  Move: {PrecisionWatchdog.TransferRecommendedCount}  Emergency: {PrecisionWatchdog.EmergencyCount}");
                 GUILayout.Label($"Current batch worst: {PrecisionWatchdog.WorstLocalDistance:F0} m, float step {PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
                 GUILayout.Label($"Last recommendation: {PrecisionWatchdog.LastRecommendation}");
+
+                if (Main.Settings.EnableConsistDryRun)
+                {
+                    GUILayout.Space(4f);
+                    GUILayout.Label("--- Coupled-consist dry-run ---");
+                    GUILayout.Label($"Source cars: {ConsistDryRun.SourceCarCount}  Live cars used: {ConsistDryRun.LiveCarCount}");
+                    GUILayout.Label($"Groups: {ConsistDryRun.GroupCount}  Largest: {ConsistDryRun.LargestGroupSize}  Move groups: {ConsistDryRun.RecommendedGroupCount}");
+                    GUILayout.Label($"Worst group: {ConsistDryRun.WorstGroupLocalDistance:F0} m, float step {ConsistDryRun.WorstGroupFloatStepMeters * 1000.0:F3} mm");
+                    GUILayout.Label($"Last group: {ConsistDryRun.LastGroupSummary}");
+                    GUILayout.Label($"Last group move: {ConsistDryRun.LastRecommendation}");
+                    GUILayout.Label($"Rebuild age: {ConsistDryRun.LastRebuildAgeSeconds:F1}s");
+                }
 
                 GUILayout.Space(4f);
                 GUILayout.Label("--- Sampled live car, slowed ---");
