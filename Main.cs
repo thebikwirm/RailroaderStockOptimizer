@@ -125,6 +125,12 @@ namespace RailroaderStockOptimizer
             GUILayout.Label($"Better Bubble Margin: {Settings.PrecisionBetterBubbleMargin:F0} m");
             Settings.PrecisionBetterBubbleMargin = GUILayout.HorizontalSlider(Settings.PrecisionBetterBubbleMargin, 500f, 20000f);
 
+            GUILayout.Label($"Overlay sample interval: {Settings.PrecisionOverlaySampleInterval:F1} sec");
+            Settings.PrecisionOverlaySampleInterval = GUILayout.HorizontalSlider(Settings.PrecisionOverlaySampleInterval, 0.5f, 5f);
+
+            GUILayout.Label($"Held worst sample time: {Settings.PrecisionOverlayWorstHoldSeconds:F1} sec");
+            Settings.PrecisionOverlayWorstHoldSeconds = GUILayout.HorizontalSlider(Settings.PrecisionOverlayWorstHoldSeconds, 2f, 30f);
+
             GUILayout.Space(8f);
             GUILayout.Label($"Tracked cars: {PerfManager.TrackedCount}");
             GUILayout.Label($"Hot: {PerfManager.HotCount}  Warm: {PerfManager.WarmCount}  Cold: {PerfManager.ColdCount}  Frozen: {PerfManager.FrozenCount}");
@@ -132,11 +138,11 @@ namespace RailroaderStockOptimizer
 
             if (Settings.EnablePrecisionWatchdog)
             {
-                GUILayout.Label($"Precision batch: eval {PrecisionWatchdog.EvaluatedCount}, warn {PrecisionWatchdog.WarningCount}, recommend {PrecisionWatchdog.TransferRecommendedCount}, emergency {PrecisionWatchdog.EmergencyCount}");
-                GUILayout.Label($"Worst local distance: {PrecisionWatchdog.WorstLocalDistance:F0} m, float step {PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
-                GUILayout.Label($"Last position source: {PrecisionWatchdog.LastPositionSource}");
-                GUILayout.Label($"Last car: {PrecisionWatchdog.LastCarName}");
-                GUILayout.Label($"Last chosen pos: {PrecisionWatchdog.LastChosenPositionText}");
+                GUILayout.Label($"Precision batch: eval {PrecisionWatchdog.EvaluatedCount}, live {PrecisionWatchdog.NonZeroSampleCount}, zero {PrecisionWatchdog.ZeroSampleCount}");
+                GUILayout.Label($"Warn {PrecisionWatchdog.WarningCount}, recommend {PrecisionWatchdog.TransferRecommendedCount}, emergency {PrecisionWatchdog.EmergencyCount}");
+                GUILayout.Label($"Current batch worst: {PrecisionWatchdog.WorstLocalDistance:F0} m, float step {PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
+                GUILayout.Label($"Held worst: {PrecisionWatchdog.HeldWorstLocalDistance:F0} m, {PrecisionWatchdog.HeldWorstCarName}");
+                GUILayout.Label($"Last non-zero: {PrecisionWatchdog.LastNonZeroCarName}, {PrecisionWatchdog.LastNonZeroChosenPositionText}");
                 GUILayout.Label($"Last recommendation: {PrecisionWatchdog.LastRecommendation}");
             }
         }
@@ -264,6 +270,8 @@ namespace RailroaderStockOptimizer
         public float PrecisionTransferDistance = 20000f;
         public float PrecisionEmergencyDistance = 30000f;
         public float PrecisionBetterBubbleMargin = 5000f;
+        public float PrecisionOverlaySampleInterval = 2f;
+        public float PrecisionOverlayWorstHoldSeconds = 10f;
 
         public override void Save(UnityModManager.ModEntry modEntry)
         {
@@ -400,6 +408,8 @@ namespace RailroaderStockOptimizer
         public const string MainBubbleId = "MainBubble";
 
         public static int EvaluatedCount { get; private set; }
+        public static int NonZeroSampleCount { get; private set; }
+        public static int ZeroSampleCount { get; private set; }
         public static int WarningCount { get; private set; }
         public static int TransferRecommendedCount { get; private set; }
         public static int EmergencyCount { get; private set; }
@@ -407,22 +417,41 @@ namespace RailroaderStockOptimizer
         public static double WorstFloatStepMeters { get; private set; }
         public static string LastRecommendation { get; private set; } = "none";
 
-        public static string LastCarName { get; private set; } = "none";
-        public static string LastPositionSource { get; private set; } = "none";
-        public static string LastTransformPositionText { get; private set; } = "none";
-        public static string LastRigidbodyPositionText { get; private set; } = "none";
-        public static string LastRendererBoundsCenterText { get; private set; } = "none";
-        public static string LastChosenPositionText { get; private set; } = "none";
+        public static string DisplayCarName { get; private set; } = "none";
+        public static string DisplayPositionSource { get; private set; } = "none";
+        public static string DisplayTransformPositionText { get; private set; } = "none";
+        public static string DisplayRigidbodyPositionText { get; private set; } = "none";
+        public static string DisplayRendererBoundsCenterText { get; private set; } = "none";
+        public static string DisplayChosenPositionText { get; private set; } = "none";
 
-        public static string WorstCarName { get; private set; } = "none";
-        public static string WorstPositionSource { get; private set; } = "none";
-        public static string WorstTransformPositionText { get; private set; } = "none";
-        public static string WorstRigidbodyPositionText { get; private set; } = "none";
-        public static string WorstRendererBoundsCenterText { get; private set; } = "none";
-        public static string WorstChosenPositionText { get; private set; } = "none";
+        public static string LastNonZeroCarName { get; private set; } = "none";
+        public static string LastNonZeroPositionSource { get; private set; } = "none";
+        public static string LastNonZeroTransformPositionText { get; private set; } = "none";
+        public static string LastNonZeroRigidbodyPositionText { get; private set; } = "none";
+        public static string LastNonZeroRendererBoundsCenterText { get; private set; } = "none";
+        public static string LastNonZeroChosenPositionText { get; private set; } = "none";
+        public static double LastNonZeroLocalDistance { get; private set; }
+        public static double LastNonZeroFloatStepMeters { get; private set; }
+
+        public static string HeldWorstCarName { get; private set; } = "none";
+        public static string HeldWorstPositionSource { get; private set; } = "none";
+        public static string HeldWorstTransformPositionText { get; private set; } = "none";
+        public static string HeldWorstRigidbodyPositionText { get; private set; } = "none";
+        public static string HeldWorstRendererBoundsCenterText { get; private set; } = "none";
+        public static string HeldWorstChosenPositionText { get; private set; } = "none";
+        public static double HeldWorstLocalDistance { get; private set; }
+        public static double HeldWorstFloatStepMeters { get; private set; }
+        public static float HeldWorstAgeSeconds => _heldWorstSetTime > 0f ? Time.realtimeSinceStartup - _heldWorstSetTime : 0f;
+
+        private static float _nextDisplaySampleTime;
+        private static float _heldWorstSetTime;
+        private static float _heldWorstExpireTime;
 
         public static void Reset()
         {
+            EvaluatedCount = 0;
+            NonZeroSampleCount = 0;
+            ZeroSampleCount = 0;
             WarningCount = 0;
             TransferRecommendedCount = 0;
             EmergencyCount = 0;
@@ -435,34 +464,44 @@ namespace RailroaderStockOptimizer
         public static void BeginBatch()
         {
             EvaluatedCount = 0;
+            NonZeroSampleCount = 0;
+            ZeroSampleCount = 0;
             WarningCount = 0;
             TransferRecommendedCount = 0;
             EmergencyCount = 0;
             WorstLocalDistance = 0.0;
             WorstFloatStepMeters = 0.0;
-            WorstCarName = "none";
-            WorstPositionSource = "none";
-            WorstTransformPositionText = "none";
-            WorstRigidbodyPositionText = "none";
-            WorstRendererBoundsCenterText = "none";
-            WorstChosenPositionText = "none";
         }
 
         private static void ResetPositionDebug()
         {
-            EvaluatedCount = 0;
-            LastCarName = "none";
-            LastPositionSource = "none";
-            LastTransformPositionText = "none";
-            LastRigidbodyPositionText = "none";
-            LastRendererBoundsCenterText = "none";
-            LastChosenPositionText = "none";
-            WorstCarName = "none";
-            WorstPositionSource = "none";
-            WorstTransformPositionText = "none";
-            WorstRigidbodyPositionText = "none";
-            WorstRendererBoundsCenterText = "none";
-            WorstChosenPositionText = "none";
+            DisplayCarName = "none";
+            DisplayPositionSource = "none";
+            DisplayTransformPositionText = "none";
+            DisplayRigidbodyPositionText = "none";
+            DisplayRendererBoundsCenterText = "none";
+            DisplayChosenPositionText = "none";
+
+            LastNonZeroCarName = "none";
+            LastNonZeroPositionSource = "none";
+            LastNonZeroTransformPositionText = "none";
+            LastNonZeroRigidbodyPositionText = "none";
+            LastNonZeroRendererBoundsCenterText = "none";
+            LastNonZeroChosenPositionText = "none";
+            LastNonZeroLocalDistance = 0.0;
+            LastNonZeroFloatStepMeters = 0.0;
+
+            HeldWorstCarName = "none";
+            HeldWorstPositionSource = "none";
+            HeldWorstTransformPositionText = "none";
+            HeldWorstRigidbodyPositionText = "none";
+            HeldWorstRendererBoundsCenterText = "none";
+            HeldWorstChosenPositionText = "none";
+            HeldWorstLocalDistance = 0.0;
+            HeldWorstFloatStepMeters = 0.0;
+            _nextDisplaySampleTime = 0f;
+            _heldWorstSetTime = 0f;
+            _heldWorstExpireTime = 0f;
         }
 
         public static void Evaluate(CarState state)
@@ -490,13 +529,19 @@ namespace RailroaderStockOptimizer
             state.PrecisionRendererBoundsCenter = rendererBoundsCenter;
             state.PrecisionChosenPosition = chosenPosition;
 
+            bool nonZero = IsMeaningfullyNonZero(chosenPosition);
             EvaluatedCount++;
-            LastCarName = state.Name;
-            LastPositionSource = positionSource;
-            LastTransformPositionText = FormatVector(transformPos);
-            LastRigidbodyPositionText = FormatVector(rigidbodyPos);
-            LastRendererBoundsCenterText = FormatVector(rendererBoundsCenter);
-            LastChosenPositionText = FormatVector(chosenPosition);
+            if (nonZero)
+                NonZeroSampleCount++;
+            else
+                ZeroSampleCount++;
+
+            if (Time.realtimeSinceStartup >= _nextDisplaySampleTime)
+            {
+                CopyToDisplaySample(state.Name, positionSource, transformPos, rigidbodyPos, rendererBoundsCenter, chosenPosition);
+                float interval = Main.Settings != null ? Main.Settings.PrecisionOverlaySampleInterval : 2f;
+                _nextDisplaySampleTime = Time.realtimeSinceStartup + Mathf.Max(0.25f, interval);
+            }
 
             // First test stage: use the selected Unity scene position as the global position.
             // Later this should become a real double/global track coordinate that survives bubble moves.
@@ -514,6 +559,18 @@ namespace RailroaderStockOptimizer
             state.PrecisionTransferRecommended = false;
             state.PrecisionTargetBubbleId = null;
 
+            if (nonZero)
+            {
+                LastNonZeroCarName = state.Name;
+                LastNonZeroPositionSource = positionSource;
+                LastNonZeroTransformPositionText = FormatVector(transformPos);
+                LastNonZeroRigidbodyPositionText = FormatVector(rigidbodyPos);
+                LastNonZeroRendererBoundsCenterText = FormatVector(rendererBoundsCenter);
+                LastNonZeroChosenPositionText = FormatVector(chosenPosition);
+                LastNonZeroLocalDistance = localDistance;
+                LastNonZeroFloatStepMeters = floatStep;
+            }
+
             if (state.PrecisionWarning)
                 WarningCount++;
 
@@ -524,13 +581,9 @@ namespace RailroaderStockOptimizer
             {
                 WorstLocalDistance = localDistance;
                 WorstFloatStepMeters = floatStep;
-                WorstCarName = state.Name;
-                WorstPositionSource = positionSource;
-                WorstTransformPositionText = FormatVector(transformPos);
-                WorstRigidbodyPositionText = FormatVector(rigidbodyPos);
-                WorstRendererBoundsCenterText = FormatVector(rendererBoundsCenter);
-                WorstChosenPositionText = FormatVector(chosenPosition);
             }
+
+            UpdateHeldWorstIfUseful(state.Name, positionSource, transformPos, rigidbodyPos, rendererBoundsCenter, chosenPosition, localDistance, floatStep, nonZero);
 
             PhysicsBubble best = FindBestBubble(global);
             double bestDistance = Vector3d.Distance(global, best.GlobalOrigin);
@@ -554,25 +607,79 @@ namespace RailroaderStockOptimizer
             }
         }
 
+        private static void CopyToDisplaySample(string carName, string positionSource, Vector3 transformPos, Vector3 rigidbodyPos, Vector3 rendererBoundsCenter, Vector3 chosenPosition)
+        {
+            DisplayCarName = carName;
+            DisplayPositionSource = positionSource;
+            DisplayTransformPositionText = FormatVector(transformPos);
+            DisplayRigidbodyPositionText = FormatVector(rigidbodyPos);
+            DisplayRendererBoundsCenterText = FormatVector(rendererBoundsCenter);
+            DisplayChosenPositionText = FormatVector(chosenPosition);
+        }
+
+        private static void UpdateHeldWorstIfUseful(string carName, string positionSource, Vector3 transformPos, Vector3 rigidbodyPos, Vector3 rendererBoundsCenter, Vector3 chosenPosition, double localDistance, double floatStep, bool nonZero)
+        {
+            if (!nonZero)
+                return;
+
+            float now = Time.realtimeSinceStartup;
+            bool expired = now >= _heldWorstExpireTime;
+            bool worse = localDistance > HeldWorstLocalDistance;
+
+            if (!expired && !worse)
+                return;
+
+            HeldWorstCarName = carName;
+            HeldWorstPositionSource = positionSource;
+            HeldWorstTransformPositionText = FormatVector(transformPos);
+            HeldWorstRigidbodyPositionText = FormatVector(rigidbodyPos);
+            HeldWorstRendererBoundsCenterText = FormatVector(rendererBoundsCenter);
+            HeldWorstChosenPositionText = FormatVector(chosenPosition);
+            HeldWorstLocalDistance = localDistance;
+            HeldWorstFloatStepMeters = floatStep;
+
+            float hold = Main.Settings != null ? Main.Settings.PrecisionOverlayWorstHoldSeconds : 10f;
+            _heldWorstSetTime = now;
+            _heldWorstExpireTime = now + Mathf.Max(1f, hold);
+        }
+
         private static Vector3 ResolveBestPosition(CarState state, out string source, out Vector3 transformPosition, out Vector3 rigidbodyPosition, out Vector3 rendererBoundsCenter)
         {
             transformPosition = state.Transform != null ? state.Transform.position : Vector3.zero;
             rigidbodyPosition = state.Rigidbody != null ? state.Rigidbody.position : transformPosition;
 
             bool hasRendererBounds = TryGetRendererBoundsCenter(state, out rendererBoundsCenter);
-            if (hasRendererBounds)
+            if (hasRendererBounds && IsMeaningfullyNonZero(rendererBoundsCenter))
             {
                 source = "RendererBounds";
                 return rendererBoundsCenter;
             }
 
-            if (state.Rigidbody != null)
+            if (state.Rigidbody != null && IsMeaningfullyNonZero(rigidbodyPosition))
             {
                 source = "Rigidbody";
                 return rigidbodyPosition;
             }
 
-            source = "Transform";
+            if (IsMeaningfullyNonZero(transformPosition))
+            {
+                source = "Transform";
+                return transformPosition;
+            }
+
+            if (hasRendererBounds)
+            {
+                source = "RendererBoundsZero";
+                return rendererBoundsCenter;
+            }
+
+            if (state.Rigidbody != null)
+            {
+                source = "RigidbodyZero";
+                return rigidbodyPosition;
+            }
+
+            source = "TransformZero";
             return transformPosition;
         }
 
@@ -614,6 +721,11 @@ namespace RailroaderStockOptimizer
 
             center = combined.center;
             return true;
+        }
+
+        private static bool IsMeaningfullyNonZero(Vector3 value)
+        {
+            return value.sqrMagnitude > 0.25f;
         }
 
         private static string FormatVector(Vector3 value)
@@ -1095,17 +1207,17 @@ namespace RailroaderStockOptimizer
             if (!Main.Enabled) return;
             if (!Main.Settings.EnableOverlay) return;
 
-            float maxHeight = Mathf.Max(300f, Screen.height - 60f);
-            _windowRect.height = Mathf.Min(_windowRect.height, maxHeight);
-            _windowRect.width = Mathf.Max(_windowRect.width, 520f);
+            float maxHeight = Mathf.Max(240f, Screen.height - 60f);
+            if (_windowRect.height > maxHeight)
+                _windowRect.height = maxHeight;
 
             _windowRect = GUI.Window(444123, _windowRect, DrawWindow, "Stock Optimizer");
         }
 
         private void DrawWindow(int id)
         {
-            float scrollHeight = Mathf.Max(220f, _windowRect.height - 50f);
-            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Width(_windowRect.width - 20f), GUILayout.Height(scrollHeight));
+            float scrollHeight = Mathf.Max(160f, _windowRect.height - 50f);
+            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Width(500f), GUILayout.Height(scrollHeight));
 
             GUILayout.Label($"Tracked: {PerfManager.TrackedCount}");
             GUILayout.Label($"Hot: {PerfManager.HotCount}");
@@ -1118,28 +1230,39 @@ namespace RailroaderStockOptimizer
             {
                 GUILayout.Space(4f);
                 GUILayout.Label("--- Precision watchdog ---");
-                GUILayout.Label($"Eval: {PrecisionWatchdog.EvaluatedCount}  Warn: {PrecisionWatchdog.WarningCount}  Move: {PrecisionWatchdog.TransferRecommendedCount}  Emergency: {PrecisionWatchdog.EmergencyCount}");
-                GUILayout.Label($"Worst local: {PrecisionWatchdog.WorstLocalDistance:F0} m");
-                GUILayout.Label($"Float step: {PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
+                GUILayout.Label($"Eval: {PrecisionWatchdog.EvaluatedCount}  Live: {PrecisionWatchdog.NonZeroSampleCount}  Zero: {PrecisionWatchdog.ZeroSampleCount}");
+                GUILayout.Label($"Warn: {PrecisionWatchdog.WarningCount}  Move: {PrecisionWatchdog.TransferRecommendedCount}  Emergency: {PrecisionWatchdog.EmergencyCount}");
+                GUILayout.Label($"Current batch worst: {PrecisionWatchdog.WorstLocalDistance:F0} m, float step {PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
                 GUILayout.Label($"Last recommendation: {PrecisionWatchdog.LastRecommendation}");
 
                 GUILayout.Space(4f);
-                GUILayout.Label("--- Last evaluated car ---");
-                GUILayout.Label($"Car: {PrecisionWatchdog.LastCarName}");
-                GUILayout.Label($"Position source: {PrecisionWatchdog.LastPositionSource}");
-                GUILayout.Label($"Transform: {PrecisionWatchdog.LastTransformPositionText}");
-                GUILayout.Label($"Rigidbody: {PrecisionWatchdog.LastRigidbodyPositionText}");
-                GUILayout.Label($"Renderer bounds: {PrecisionWatchdog.LastRendererBoundsCenterText}");
-                GUILayout.Label($"Chosen/global test: {PrecisionWatchdog.LastChosenPositionText}");
+                GUILayout.Label("--- Sampled car, slowed ---");
+                GUILayout.Label($"Car: {PrecisionWatchdog.DisplayCarName}");
+                GUILayout.Label($"Position source: {PrecisionWatchdog.DisplayPositionSource}");
+                GUILayout.Label($"Transform: {PrecisionWatchdog.DisplayTransformPositionText}");
+                GUILayout.Label($"Rigidbody: {PrecisionWatchdog.DisplayRigidbodyPositionText}");
+                GUILayout.Label($"Renderer bounds: {PrecisionWatchdog.DisplayRendererBoundsCenterText}");
+                GUILayout.Label($"Chosen/global test: {PrecisionWatchdog.DisplayChosenPositionText}");
 
                 GUILayout.Space(4f);
-                GUILayout.Label("--- Worst-distance car this batch ---");
-                GUILayout.Label($"Car: {PrecisionWatchdog.WorstCarName}");
-                GUILayout.Label($"Position source: {PrecisionWatchdog.WorstPositionSource}");
-                GUILayout.Label($"Transform: {PrecisionWatchdog.WorstTransformPositionText}");
-                GUILayout.Label($"Rigidbody: {PrecisionWatchdog.WorstRigidbodyPositionText}");
-                GUILayout.Label($"Renderer bounds: {PrecisionWatchdog.WorstRendererBoundsCenterText}");
-                GUILayout.Label($"Chosen/global test: {PrecisionWatchdog.WorstChosenPositionText}");
+                GUILayout.Label("--- Last non-zero position ---");
+                GUILayout.Label($"Car: {PrecisionWatchdog.LastNonZeroCarName}");
+                GUILayout.Label($"Position source: {PrecisionWatchdog.LastNonZeroPositionSource}");
+                GUILayout.Label($"Transform: {PrecisionWatchdog.LastNonZeroTransformPositionText}");
+                GUILayout.Label($"Rigidbody: {PrecisionWatchdog.LastNonZeroRigidbodyPositionText}");
+                GUILayout.Label($"Renderer bounds: {PrecisionWatchdog.LastNonZeroRendererBoundsCenterText}");
+                GUILayout.Label($"Chosen/global test: {PrecisionWatchdog.LastNonZeroChosenPositionText}");
+                GUILayout.Label($"Local distance: {PrecisionWatchdog.LastNonZeroLocalDistance:F0} m, float step {PrecisionWatchdog.LastNonZeroFloatStepMeters * 1000.0:F3} mm");
+
+                GUILayout.Space(4f);
+                GUILayout.Label("--- Held worst-distance car ---");
+                GUILayout.Label($"Car: {PrecisionWatchdog.HeldWorstCarName}");
+                GUILayout.Label($"Position source: {PrecisionWatchdog.HeldWorstPositionSource}");
+                GUILayout.Label($"Transform: {PrecisionWatchdog.HeldWorstTransformPositionText}");
+                GUILayout.Label($"Rigidbody: {PrecisionWatchdog.HeldWorstRigidbodyPositionText}");
+                GUILayout.Label($"Renderer bounds: {PrecisionWatchdog.HeldWorstRendererBoundsCenterText}");
+                GUILayout.Label($"Chosen/global test: {PrecisionWatchdog.HeldWorstChosenPositionText}");
+                GUILayout.Label($"Local distance: {PrecisionWatchdog.HeldWorstLocalDistance:F0} m, float step {PrecisionWatchdog.HeldWorstFloatStepMeters * 1000.0:F3} mm, age {PrecisionWatchdog.HeldWorstAgeSeconds:F1}s");
             }
 
             GUILayout.EndScrollView();
