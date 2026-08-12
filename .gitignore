@@ -1,0 +1,19 @@
+# Visual Studio / Rider
+.vs/
+.idea/
+
+# Build outputs
+bin/
+obj/
+*.dll
+*.pdb
+*.mdb
+
+# User/local settings
+Settings.xml
+*.user
+*.suo
+
+# OS junk
+.DS_Store
+Thumbs.db
