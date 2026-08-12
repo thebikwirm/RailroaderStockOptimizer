@@ -4,7 +4,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{A298C225-01E4-41ED-A267-5C6485B99FBD}</ProjectGuid>
+    <ProjectGuid>{87B352C0-E9AA-2F74-6E70-823CA661D10C}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>RailroaderStockOptimizer</RootNamespace>
