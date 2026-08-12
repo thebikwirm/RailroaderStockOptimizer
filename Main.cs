@@ -18,7 +18,6 @@ namespace RailroaderStockOptimizer
         private static float _refreshTimer;
         private static float _playerScanTimer;
         private static float _lastDebugLogTime;
-
         private static GameObject _overlayObject;
 
         public static bool Load(UnityModManager.ModEntry modEntry)
@@ -109,6 +108,7 @@ namespace RailroaderStockOptimizer
             Settings.PrecisionDryRunOnly = GUILayout.Toggle(Settings.PrecisionDryRunOnly, "Dry-run only: log recommended bubble moves, do not move trains");
             Settings.ShowPrecisionDetailsInOverlay = GUILayout.Toggle(Settings.ShowPrecisionDetailsInOverlay, "Show precision details in overlay");
             Settings.EnableConsistDryRun = GUILayout.Toggle(Settings.EnableConsistDryRun, "Enable real coupled-consist dry-run");
+            Settings.EnableRigidbodySnapshotDryRun = GUILayout.Toggle(Settings.EnableRigidbodySnapshotDryRun, "Enable rigidbody snapshot dry-run");
 
             GUILayout.Label($"Bubble Grid Size: {Settings.BubbleGridSize:F0} m");
             Settings.BubbleGridSize = GUILayout.HorizontalSlider(Settings.BubbleGridSize, 5000f, 50000f);
@@ -140,6 +140,9 @@ namespace RailroaderStockOptimizer
             GUILayout.Label($"Transfer plan hold time: {Settings.TransferPlanHoldSeconds:F0} sec");
             Settings.TransferPlanHoldSeconds = GUILayout.HorizontalSlider(Settings.TransferPlanHoldSeconds, 5f, 120f);
 
+            GUILayout.Label($"Snapshot moving threshold: {Settings.SnapshotMovingSpeedThreshold:F3} m/s");
+            Settings.SnapshotMovingSpeedThreshold = GUILayout.HorizontalSlider(Settings.SnapshotMovingSpeedThreshold, 0.001f, 2f);
+
             GUILayout.Space(8f);
             GUILayout.Label($"Tracked cars: {PerfManager.TrackedCount}");
             GUILayout.Label($"Hot: {PerfManager.HotCount}  Warm: {PerfManager.WarmCount}  Cold: {PerfManager.ColdCount}  Frozen: {PerfManager.FrozenCount}");
@@ -165,6 +168,7 @@ namespace RailroaderStockOptimizer
                 GUILayout.Label($"Last group: {ConsistDryRun.LastGroupSummary}");
                 GUILayout.Label($"Last group recommendation: {ConsistDryRun.LastRecommendation}");
                 GUILayout.Label($"Transfer plan: {ConsistDryRun.TransferPlanSummary}");
+                GUILayout.Label($"Snapshot: {ConsistDryRun.SnapshotSummary}");
             }
         }
 
@@ -283,6 +287,7 @@ namespace RailroaderStockOptimizer
         public bool PrecisionDryRunOnly = true;
         public bool ShowPrecisionDetailsInOverlay = true;
         public bool EnableConsistDryRun = true;
+        public bool EnableRigidbodySnapshotDryRun = true;
         public float BubbleGridSize = 20000f;
         public float PrecisionWarningDistance = 10000f;
         public float PrecisionTransferDistance = 20000f;
@@ -293,6 +298,7 @@ namespace RailroaderStockOptimizer
         public float ConsistDryRunInterval = 2f;
         public float ConsistCachedPositionMaxAge = 60f;
         public float TransferPlanHoldSeconds = 30f;
+        public float SnapshotMovingSpeedThreshold = 0.03f;
 
         public override void Save(UnityModManager.ModEntry modEntry)
         {
@@ -918,6 +924,24 @@ namespace RailroaderStockOptimizer
         }
     }
 
+    public sealed class RigidbodySnapshot
+    {
+        public string CarName;
+        public bool HasTransform;
+        public Vector3 TransformPosition;
+        public Quaternion TransformRotation;
+        public bool HasRigidbody;
+        public Vector3 RigidbodyPosition;
+        public Quaternion RigidbodyRotation;
+        public Vector3 Velocity;
+        public Vector3 AngularVelocity;
+        public bool IsSleeping;
+        public bool WasForcedSleeping;
+        public bool IsMoving;
+        public float Speed;
+        public float AngularSpeed;
+    }
+
     public static class ConsistDryRun
     {
         public static int SourceCarCount { get; private set; }
@@ -935,6 +959,8 @@ namespace RailroaderStockOptimizer
         public static string LastRebuildReason { get; private set; } = "none";
         public static string TransferPlanSummary { get; private set; } = "none";
         public static string TransferPlanDetails { get; private set; } = "none";
+        public static string SnapshotSummary { get; private set; } = "none";
+        public static string SnapshotDetails { get; private set; } = "none";
         public static float TransferPlanAgeSeconds => _transferPlanSetTime > 0f ? Time.realtimeSinceStartup - _transferPlanSetTime : 0f;
         public static float LastRebuildAgeSeconds => _lastRebuildTime > 0f ? Time.realtimeSinceStartup - _lastRebuildTime : 0f;
 
@@ -962,6 +988,8 @@ namespace RailroaderStockOptimizer
             LastRebuildReason = "none";
             TransferPlanSummary = "none";
             TransferPlanDetails = "none";
+            SnapshotSummary = "none";
+            SnapshotDetails = "none";
             _nextRebuildTime = 0f;
             _lastRebuildTime = 0f;
             _transferPlanSetTime = 0f;
@@ -989,6 +1017,8 @@ namespace RailroaderStockOptimizer
             {
                 TransferPlanSummary = "expired";
                 TransferPlanDetails = "none";
+                SnapshotSummary = "expired";
+                SnapshotDetails = "none";
                 _transferPlanSetTime = 0f;
                 _transferPlanExpireTime = 0f;
             }
@@ -1194,6 +1224,10 @@ namespace RailroaderStockOptimizer
             if (cachedStates == null || cachedStates.Count == 0 || targetBubble == null)
                 return;
 
+            List<RigidbodySnapshot> snapshots = Main.Settings != null && Main.Settings.EnableRigidbodySnapshotDryRun
+                ? CaptureRigidbodySnapshots(cachedStates)
+                : new List<RigidbodySnapshot>();
+
             TransferPlanSummary = $"{cachedStates.Count}/{coupledCount} cached cars: {currentBubbleId} -> {targetBubble.Id}, center {localDistance:F0}m -> {targetDistance:F0}m";
 
             List<string> lines = new List<string>();
@@ -1213,16 +1247,147 @@ namespace RailroaderStockOptimizer
                 Vector3d oldLocal = global - currentOrigin;
                 Vector3 newLocal = targetBubble.GlobalToLocal(global);
                 float age = Time.realtimeSinceStartup - state.CachedPositionTime;
-                lines.Add($"{i + 1}. {state.Name}: global {FormatVector(global)} | old local {FormatVector(oldLocal)} | new local {PrecisionWatchdog.FormatVector(newLocal)} | age {age:F1}s");
+                lines.Add($"{i + 1}. {state.Name}: global {FormatVector(global)} | old {FormatVector(oldLocal)} | new {PrecisionWatchdog.FormatVector(newLocal)} | age {age:F1}s");
             }
 
             if (cachedStates.Count > limit)
                 lines.Add($"... plus {cachedStates.Count - limit} more cached car(s)");
 
             TransferPlanDetails = string.Join("\n", lines.ToArray());
+            BuildSnapshotSummaryAndDetails(snapshots, cachedStates.Count);
+
             _transferPlanSetTime = Time.realtimeSinceStartup;
             float hold = Main.Settings != null ? Main.Settings.TransferPlanHoldSeconds : 30f;
             _transferPlanExpireTime = _transferPlanSetTime + Mathf.Max(1f, hold);
+        }
+
+        private static List<RigidbodySnapshot> CaptureRigidbodySnapshots(List<CarState> states)
+        {
+            List<RigidbodySnapshot> snapshots = new List<RigidbodySnapshot>(states != null ? states.Count : 0);
+            if (states == null)
+                return snapshots;
+
+            float movingThreshold = Main.Settings != null ? Main.Settings.SnapshotMovingSpeedThreshold : 0.03f;
+
+            for (int i = 0; i < states.Count; i++)
+            {
+                CarState state = states[i];
+                RigidbodySnapshot snap = new RigidbodySnapshot
+                {
+                    CarName = state != null ? state.Name : "<null>",
+                    HasTransform = state != null && state.Transform != null,
+                    HasRigidbody = state != null && state.Rigidbody != null,
+                    WasForcedSleeping = state != null && state.WasSleepingForced
+                };
+
+                if (snap.HasTransform)
+                {
+                    snap.TransformPosition = state.Transform.position;
+                    snap.TransformRotation = state.Transform.rotation;
+                }
+
+                if (snap.HasRigidbody)
+                {
+                    try
+                    {
+                        snap.RigidbodyPosition = state.Rigidbody.position;
+                        snap.RigidbodyRotation = state.Rigidbody.rotation;
+                        snap.Velocity = state.Rigidbody.velocity;
+                        snap.AngularVelocity = state.Rigidbody.angularVelocity;
+                        snap.IsSleeping = state.Rigidbody.IsSleeping();
+                        snap.Speed = snap.Velocity.magnitude;
+                        snap.AngularSpeed = snap.AngularVelocity.magnitude;
+                        snap.IsMoving = snap.Speed > movingThreshold || snap.AngularSpeed > movingThreshold;
+                    }
+                    catch
+                    {
+                        snap.HasRigidbody = false;
+                    }
+                }
+
+                snapshots.Add(snap);
+            }
+
+            return snapshots;
+        }
+
+        private static void BuildSnapshotSummaryAndDetails(List<RigidbodySnapshot> snapshots, int expectedCars)
+        {
+            if (Main.Settings == null || !Main.Settings.EnableRigidbodySnapshotDryRun)
+            {
+                SnapshotSummary = "disabled";
+                SnapshotDetails = "none";
+                return;
+            }
+
+            if (snapshots == null || snapshots.Count == 0)
+            {
+                SnapshotSummary = "none";
+                SnapshotDetails = "none";
+                return;
+            }
+
+            int rbCount = 0;
+            int missingRb = 0;
+            int sleeping = 0;
+            int awake = 0;
+            int moving = 0;
+            int forcedSleeping = 0;
+
+            for (int i = 0; i < snapshots.Count; i++)
+            {
+                RigidbodySnapshot snap = snapshots[i];
+                if (snap == null)
+                    continue;
+
+                if (snap.HasRigidbody)
+                {
+                    rbCount++;
+                    if (snap.IsSleeping) sleeping++; else awake++;
+                    if (snap.IsMoving) moving++;
+                }
+                else
+                {
+                    missingRb++;
+                }
+
+                if (snap.WasForcedSleeping)
+                    forcedSleeping++;
+            }
+
+            SnapshotSummary = $"snap {snapshots.Count}/{expectedCars}, rb {rbCount}, missing {missingRb}, sleep/awake {sleeping}/{awake}, moving {moving}, forced {forcedSleeping}";
+
+            List<string> lines = new List<string>();
+            lines.Add("Snapshot dry-run - captured state only, no restore/apply yet");
+            lines.Add(SnapshotSummary);
+            lines.Add("First 6 snapshots:");
+
+            int limit = Mathf.Min(6, snapshots.Count);
+            for (int i = 0; i < limit; i++)
+            {
+                RigidbodySnapshot snap = snapshots[i];
+                if (snap == null)
+                    continue;
+
+                if (!snap.HasRigidbody)
+                {
+                    lines.Add($"{i + 1}. {snap.CarName}: no Rigidbody, transform {FormatVector(Vector3d.FromVector3(snap.TransformPosition))}, rot {FormatEuler(snap.TransformRotation)}");
+                    continue;
+                }
+
+                lines.Add($"{i + 1}. {snap.CarName}: rbPos {PrecisionWatchdog.FormatVector(snap.RigidbodyPosition)}, rbRot {FormatEuler(snap.RigidbodyRotation)}, vel {PrecisionWatchdog.FormatVector(snap.Velocity)} ({snap.Speed:F2}m/s), ang {snap.AngularSpeed:F2}, sleeping {snap.IsSleeping}");
+            }
+
+            if (snapshots.Count > limit)
+                lines.Add($"... plus {snapshots.Count - limit} more snapshot(s)");
+
+            SnapshotDetails = string.Join("\n", lines.ToArray());
+        }
+
+        private static string FormatEuler(Quaternion rotation)
+        {
+            Vector3 e = rotation.eulerAngles;
+            return $"{e.x:F0},{e.y:F0},{e.z:F0}";
         }
 
         private static string FormatVector(Vector3d value)
@@ -1629,7 +1794,7 @@ namespace RailroaderStockOptimizer
 
     public class OverlayBehaviour : MonoBehaviour
     {
-        private Rect _windowRect = new Rect(20f, 20f, 900f, 540f);
+        private Rect _windowRect = new Rect(20f, 20f, 920f, 560f);
         private Vector2 _scroll;
         private GUIStyle _label;
         private GUIStyle _header;
@@ -1679,21 +1844,24 @@ namespace RailroaderStockOptimizer
 
             _label = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 11,
+                fontSize = 10,
                 wordWrap = false,
-                margin = new RectOffset(1, 1, 0, 0),
-                padding = new RectOffset(0, 0, 0, 0)
+                margin = new RectOffset(1, 1, -1, -1),
+                padding = new RectOffset(0, 0, 0, 0),
+                fixedHeight = 14f,
+                clipping = TextClipping.Clip
             };
 
             _header = new GUIStyle(_label)
             {
-                fontStyle = FontStyle.Bold
+                fontStyle = FontStyle.Bold,
+                fixedHeight = 15f
             };
 
             _box = new GUIStyle(GUI.skin.box)
             {
-                margin = new RectOffset(2, 2, 1, 1),
-                padding = new RectOffset(4, 4, 3, 3)
+                margin = new RectOffset(1, 1, 1, 1),
+                padding = new RectOffset(3, 3, 2, 2)
             };
         }
 
@@ -1743,7 +1911,6 @@ namespace RailroaderStockOptimizer
             ClipLabel("Original: " + PrecisionWatchdog.LastRecommendationOriginalText);
             ClipLabel("Current: " + PrecisionWatchdog.LastRecommendationCurrentText);
             ClipLabel("Indiv: " + PrecisionWatchdog.LastRecommendation);
-            GUILayout.Space(2f);
             Header("Consist move");
             Row("Worst group", $"{ConsistDryRun.WorstGroupLocalDistance:F0} m / {ConsistDryRun.WorstGroupFloatStepMeters * 1000.0:F3} mm");
             ClipLabel("Group: " + ConsistDryRun.LastGroupSummary);
@@ -1757,11 +1924,9 @@ namespace RailroaderStockOptimizer
             Row("Source", PrecisionWatchdog.DisplayPositionSource);
             Row("Pos", PrecisionWatchdog.DisplayChosenPositionText);
             Row("Age", $"{PrecisionWatchdog.DisplaySampleAgeSeconds:F1}s");
-            GUILayout.Space(2f);
             Row("Last nonzero", PrecisionWatchdog.LastNonZeroCarName);
             Row("NZ pos", PrecisionWatchdog.LastNonZeroChosenPositionText);
             Row("NZ dist", $"{PrecisionWatchdog.LastNonZeroLocalDistance:F0} m / {PrecisionWatchdog.LastNonZeroFloatStepMeters * 1000.0:F3} mm");
-            GUILayout.Space(2f);
             Row("Held worst", PrecisionWatchdog.HeldWorstCarName);
             Row("Worst pos", PrecisionWatchdog.HeldWorstChosenPositionText);
             Row("Worst dist", $"{PrecisionWatchdog.HeldWorstLocalDistance:F0} m / {PrecisionWatchdog.HeldWorstFloatStepMeters * 1000.0:F3} mm");
@@ -1773,10 +1938,20 @@ namespace RailroaderStockOptimizer
         private void DrawTransferPlan(float width)
         {
             GUILayout.BeginVertical(_box, GUILayout.Width(width - 8f));
-            Header("Consist transfer plan dry-run");
+            Header("Consist transfer plan + rigidbody snapshot dry-run");
             Row("Plan age", $"{ConsistDryRun.TransferPlanAgeSeconds:F1}s");
             ClipLabel("Summary: " + ConsistDryRun.TransferPlanSummary);
-            DrawMultilineCompact(ConsistDryRun.TransferPlanDetails, 10);
+            ClipLabel("Snapshot: " + ConsistDryRun.SnapshotSummary);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.BeginVertical(GUILayout.Width((width - 16f) * 0.5f));
+            DrawMultilineCompact(ConsistDryRun.TransferPlanDetails, 9);
+            GUILayout.EndVertical();
+            GUILayout.BeginVertical(GUILayout.Width((width - 16f) * 0.5f));
+            DrawMultilineCompact(ConsistDryRun.SnapshotDetails, 9);
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+
             GUILayout.EndVertical();
         }
 
@@ -1787,15 +1962,15 @@ namespace RailroaderStockOptimizer
 
         private void Row(string label, string value)
         {
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(label + ":", _label, GUILayout.Width(82f));
+            GUILayout.BeginHorizontal(GUILayout.Height(14f));
+            GUILayout.Label(label + ":", _label, GUILayout.Width(78f));
             GUILayout.Label(value ?? "none", _label);
             GUILayout.EndHorizontal();
         }
 
         private void ClipLabel(string text)
         {
-            GUILayout.Label(text ?? "none", _label);
+            GUILayout.Label(text ?? "none", _label, GUILayout.Height(14f));
         }
 
         private void DrawMultilineCompact(string text, int maxLines)
