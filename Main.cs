@@ -132,8 +132,11 @@ namespace RailroaderStockOptimizer
 
             if (Settings.EnablePrecisionWatchdog)
             {
-                GUILayout.Label($"Precision batch: warn {PrecisionWatchdog.WarningCount}, recommend {PrecisionWatchdog.TransferRecommendedCount}, emergency {PrecisionWatchdog.EmergencyCount}");
+                GUILayout.Label($"Precision batch: eval {PrecisionWatchdog.EvaluatedCount}, warn {PrecisionWatchdog.WarningCount}, recommend {PrecisionWatchdog.TransferRecommendedCount}, emergency {PrecisionWatchdog.EmergencyCount}");
                 GUILayout.Label($"Worst local distance: {PrecisionWatchdog.WorstLocalDistance:F0} m, float step {PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
+                GUILayout.Label($"Last position source: {PrecisionWatchdog.LastPositionSource}");
+                GUILayout.Label($"Last car: {PrecisionWatchdog.LastCarName}");
+                GUILayout.Label($"Last chosen pos: {PrecisionWatchdog.LastChosenPositionText}");
                 GUILayout.Label($"Last recommendation: {PrecisionWatchdog.LastRecommendation}");
             }
         }
@@ -382,6 +385,13 @@ namespace RailroaderStockOptimizer
         public bool PrecisionEmergency;
         public string PrecisionTargetBubbleId;
 
+        // Position source debug samples shown in the overlay.
+        public string PrecisionPositionSource;
+        public Vector3 PrecisionTransformPosition;
+        public Vector3 PrecisionRigidbodyPosition;
+        public Vector3 PrecisionRendererBoundsCenter;
+        public Vector3 PrecisionChosenPosition;
+
         public string Name => GameObject != null ? GameObject.name : "<null>";
     }
 
@@ -389,12 +399,27 @@ namespace RailroaderStockOptimizer
     {
         public const string MainBubbleId = "MainBubble";
 
+        public static int EvaluatedCount { get; private set; }
         public static int WarningCount { get; private set; }
         public static int TransferRecommendedCount { get; private set; }
         public static int EmergencyCount { get; private set; }
         public static double WorstLocalDistance { get; private set; }
         public static double WorstFloatStepMeters { get; private set; }
         public static string LastRecommendation { get; private set; } = "none";
+
+        public static string LastCarName { get; private set; } = "none";
+        public static string LastPositionSource { get; private set; } = "none";
+        public static string LastTransformPositionText { get; private set; } = "none";
+        public static string LastRigidbodyPositionText { get; private set; } = "none";
+        public static string LastRendererBoundsCenterText { get; private set; } = "none";
+        public static string LastChosenPositionText { get; private set; } = "none";
+
+        public static string WorstCarName { get; private set; } = "none";
+        public static string WorstPositionSource { get; private set; } = "none";
+        public static string WorstTransformPositionText { get; private set; } = "none";
+        public static string WorstRigidbodyPositionText { get; private set; } = "none";
+        public static string WorstRendererBoundsCenterText { get; private set; } = "none";
+        public static string WorstChosenPositionText { get; private set; } = "none";
 
         public static void Reset()
         {
@@ -404,15 +429,40 @@ namespace RailroaderStockOptimizer
             WorstLocalDistance = 0.0;
             WorstFloatStepMeters = 0.0;
             LastRecommendation = "none";
+            ResetPositionDebug();
         }
 
         public static void BeginBatch()
         {
+            EvaluatedCount = 0;
             WarningCount = 0;
             TransferRecommendedCount = 0;
             EmergencyCount = 0;
             WorstLocalDistance = 0.0;
             WorstFloatStepMeters = 0.0;
+            WorstCarName = "none";
+            WorstPositionSource = "none";
+            WorstTransformPositionText = "none";
+            WorstRigidbodyPositionText = "none";
+            WorstRendererBoundsCenterText = "none";
+            WorstChosenPositionText = "none";
+        }
+
+        private static void ResetPositionDebug()
+        {
+            EvaluatedCount = 0;
+            LastCarName = "none";
+            LastPositionSource = "none";
+            LastTransformPositionText = "none";
+            LastRigidbodyPositionText = "none";
+            LastRendererBoundsCenterText = "none";
+            LastChosenPositionText = "none";
+            WorstCarName = "none";
+            WorstPositionSource = "none";
+            WorstTransformPositionText = "none";
+            WorstRigidbodyPositionText = "none";
+            WorstRendererBoundsCenterText = "none";
+            WorstChosenPositionText = "none";
         }
 
         public static void Evaluate(CarState state)
@@ -428,9 +478,29 @@ namespace RailroaderStockOptimizer
                 state.BubbleOrigin = Vector3d.Zero;
             }
 
-            // First test stage: use the current Unity scene position as the global position.
+            Vector3 transformPos;
+            Vector3 rigidbodyPos;
+            Vector3 rendererBoundsCenter;
+            string positionSource;
+            Vector3 chosenPosition = ResolveBestPosition(state, out positionSource, out transformPos, out rigidbodyPos, out rendererBoundsCenter);
+
+            state.PrecisionPositionSource = positionSource;
+            state.PrecisionTransformPosition = transformPos;
+            state.PrecisionRigidbodyPosition = rigidbodyPos;
+            state.PrecisionRendererBoundsCenter = rendererBoundsCenter;
+            state.PrecisionChosenPosition = chosenPosition;
+
+            EvaluatedCount++;
+            LastCarName = state.Name;
+            LastPositionSource = positionSource;
+            LastTransformPositionText = FormatVector(transformPos);
+            LastRigidbodyPositionText = FormatVector(rigidbodyPos);
+            LastRendererBoundsCenterText = FormatVector(rendererBoundsCenter);
+            LastChosenPositionText = FormatVector(chosenPosition);
+
+            // First test stage: use the selected Unity scene position as the global position.
             // Later this should become a real double/global track coordinate that survives bubble moves.
-            Vector3d global = Vector3d.FromVector3(state.Transform.position);
+            Vector3d global = Vector3d.FromVector3(chosenPosition);
             state.GlobalPosition = global;
 
             double localDistance = Vector3d.Distance(global, state.BubbleOrigin);
@@ -450,10 +520,16 @@ namespace RailroaderStockOptimizer
             if (state.PrecisionEmergency)
                 EmergencyCount++;
 
-            if (localDistance > WorstLocalDistance)
+            if (localDistance > WorstLocalDistance || EvaluatedCount == 1)
             {
                 WorstLocalDistance = localDistance;
                 WorstFloatStepMeters = floatStep;
+                WorstCarName = state.Name;
+                WorstPositionSource = positionSource;
+                WorstTransformPositionText = FormatVector(transformPos);
+                WorstRigidbodyPositionText = FormatVector(rigidbodyPos);
+                WorstRendererBoundsCenterText = FormatVector(rendererBoundsCenter);
+                WorstChosenPositionText = FormatVector(chosenPosition);
             }
 
             PhysicsBubble best = FindBestBubble(global);
@@ -468,7 +544,7 @@ namespace RailroaderStockOptimizer
                 state.PrecisionTargetBubbleId = best.Id;
                 TransferRecommendedCount++;
 
-                LastRecommendation = $"{state.Name}: {state.BubbleId} -> {best.Id}, local {localDistance:F0}m -> {bestDistance:F0}m, float step {floatStep * 1000.0:F3}mm";
+                LastRecommendation = $"{state.Name}: {state.BubbleId} -> {best.Id}, local {localDistance:F0}m -> {bestDistance:F0}m, source {positionSource}, float step {floatStep * 1000.0:F3}mm";
                 Main.DebugLogThrottled("Precision watchdog dry-run recommends bubble transfer: " + LastRecommendation);
 
                 if (!settings.PrecisionDryRunOnly)
@@ -476,6 +552,73 @@ namespace RailroaderStockOptimizer
                     Main.DebugLogThrottled("Precision watchdog real transfer is not implemented yet. Staying in dry-run behavior.");
                 }
             }
+        }
+
+        private static Vector3 ResolveBestPosition(CarState state, out string source, out Vector3 transformPosition, out Vector3 rigidbodyPosition, out Vector3 rendererBoundsCenter)
+        {
+            transformPosition = state.Transform != null ? state.Transform.position : Vector3.zero;
+            rigidbodyPosition = state.Rigidbody != null ? state.Rigidbody.position : transformPosition;
+
+            bool hasRendererBounds = TryGetRendererBoundsCenter(state, out rendererBoundsCenter);
+            if (hasRendererBounds)
+            {
+                source = "RendererBounds";
+                return rendererBoundsCenter;
+            }
+
+            if (state.Rigidbody != null)
+            {
+                source = "Rigidbody";
+                return rigidbodyPosition;
+            }
+
+            source = "Transform";
+            return transformPosition;
+        }
+
+        private static bool TryGetRendererBoundsCenter(CarState state, out Vector3 center)
+        {
+            center = Vector3.zero;
+
+            if (state == null || state.Renderers == null || state.Renderers.Length == 0)
+                return false;
+
+            bool hasBounds = false;
+            Bounds combined = new Bounds();
+
+            for (int i = 0; i < state.Renderers.Length; i++)
+            {
+                Renderer renderer = state.Renderers[i];
+                if (renderer == null)
+                    continue;
+
+                try
+                {
+                    if (!hasBounds)
+                    {
+                        combined = renderer.bounds;
+                        hasBounds = true;
+                    }
+                    else
+                    {
+                        combined.Encapsulate(renderer.bounds);
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            if (!hasBounds)
+                return false;
+
+            center = combined.center;
+            return true;
+        }
+
+        private static string FormatVector(Vector3 value)
+        {
+            return $"{value.x:F1}, {value.y:F1}, {value.z:F1}";
         }
 
         public static PhysicsBubble FindBestBubble(Vector3d globalPosition)
@@ -633,7 +776,12 @@ namespace RailroaderStockOptimizer
                         PrecisionWarning = false,
                         PrecisionTransferRecommended = false,
                         PrecisionEmergency = false,
-                        PrecisionTargetBubbleId = null
+                        PrecisionTargetBubbleId = null,
+                        PrecisionPositionSource = "none",
+                        PrecisionTransformPosition = go != null ? go.transform.position : Vector3.zero,
+                        PrecisionRigidbodyPosition = rb != null ? rb.position : Vector3.zero,
+                        PrecisionRendererBoundsCenter = Vector3.zero,
+                        PrecisionChosenPosition = go != null ? go.transform.position : Vector3.zero
                     };
 
                     _cars.Add(state);
@@ -939,7 +1087,8 @@ namespace RailroaderStockOptimizer
 
     public class OverlayBehaviour : MonoBehaviour
     {
-        private Rect _windowRect = new Rect(20f, 20f, 360f, 230f);
+        private Rect _windowRect = new Rect(20f, 20f, 520f, 440f);
+        private Vector2 _scroll;
 
         private void OnGUI()
         {
@@ -951,6 +1100,8 @@ namespace RailroaderStockOptimizer
 
         private void DrawWindow(int id)
         {
+            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Width(500f), GUILayout.Height(390f));
+
             GUILayout.Label($"Tracked: {PerfManager.TrackedCount}");
             GUILayout.Label($"Hot: {PerfManager.HotCount}");
             GUILayout.Label($"Warm: {PerfManager.WarmCount}");
@@ -962,11 +1113,31 @@ namespace RailroaderStockOptimizer
             {
                 GUILayout.Space(4f);
                 GUILayout.Label("--- Precision watchdog ---");
-                GUILayout.Label($"Warn: {PrecisionWatchdog.WarningCount}  Move: {PrecisionWatchdog.TransferRecommendedCount}  Emergency: {PrecisionWatchdog.EmergencyCount}");
+                GUILayout.Label($"Eval: {PrecisionWatchdog.EvaluatedCount}  Warn: {PrecisionWatchdog.WarningCount}  Move: {PrecisionWatchdog.TransferRecommendedCount}  Emergency: {PrecisionWatchdog.EmergencyCount}");
                 GUILayout.Label($"Worst local: {PrecisionWatchdog.WorstLocalDistance:F0} m");
                 GUILayout.Label($"Float step: {PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
-                GUILayout.Label($"Last: {PrecisionWatchdog.LastRecommendation}");
+                GUILayout.Label($"Last recommendation: {PrecisionWatchdog.LastRecommendation}");
+
+                GUILayout.Space(4f);
+                GUILayout.Label("--- Last evaluated car ---");
+                GUILayout.Label($"Car: {PrecisionWatchdog.LastCarName}");
+                GUILayout.Label($"Position source: {PrecisionWatchdog.LastPositionSource}");
+                GUILayout.Label($"Transform: {PrecisionWatchdog.LastTransformPositionText}");
+                GUILayout.Label($"Rigidbody: {PrecisionWatchdog.LastRigidbodyPositionText}");
+                GUILayout.Label($"Renderer bounds: {PrecisionWatchdog.LastRendererBoundsCenterText}");
+                GUILayout.Label($"Chosen/global test: {PrecisionWatchdog.LastChosenPositionText}");
+
+                GUILayout.Space(4f);
+                GUILayout.Label("--- Worst-distance car this batch ---");
+                GUILayout.Label($"Car: {PrecisionWatchdog.WorstCarName}");
+                GUILayout.Label($"Position source: {PrecisionWatchdog.WorstPositionSource}");
+                GUILayout.Label($"Transform: {PrecisionWatchdog.WorstTransformPositionText}");
+                GUILayout.Label($"Rigidbody: {PrecisionWatchdog.WorstRigidbodyPositionText}");
+                GUILayout.Label($"Renderer bounds: {PrecisionWatchdog.WorstRendererBoundsCenterText}");
+                GUILayout.Label($"Chosen/global test: {PrecisionWatchdog.WorstChosenPositionText}");
             }
+
+            GUILayout.EndScrollView();
 
             GUI.DragWindow(new Rect(0f, 0f, 10000f, 20f));
         }
