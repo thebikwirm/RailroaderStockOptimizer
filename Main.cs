@@ -1087,7 +1087,7 @@ namespace RailroaderStockOptimizer
 
     public class OverlayBehaviour : MonoBehaviour
     {
-        private Rect _windowRect = new Rect(20f, 20f, 520f, 440f);
+        private Rect _windowRect = new Rect(20f, 20f, 520f, 640f);
         private Vector2 _scroll;
 
         private void OnGUI()
@@ -1095,12 +1095,17 @@ namespace RailroaderStockOptimizer
             if (!Main.Enabled) return;
             if (!Main.Settings.EnableOverlay) return;
 
+            float maxHeight = Mathf.Max(300f, Screen.height - 60f);
+            _windowRect.height = Mathf.Min(_windowRect.height, maxHeight);
+            _windowRect.width = Mathf.Max(_windowRect.width, 520f);
+
             _windowRect = GUI.Window(444123, _windowRect, DrawWindow, "Stock Optimizer");
         }
 
         private void DrawWindow(int id)
         {
-            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Width(500f), GUILayout.Height(390f));
+            float scrollHeight = Mathf.Max(220f, _windowRect.height - 50f);
+            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Width(_windowRect.width - 20f), GUILayout.Height(scrollHeight));
 
             GUILayout.Label($"Tracked: {PerfManager.TrackedCount}");
             GUILayout.Label($"Hot: {PerfManager.HotCount}");
