@@ -64,7 +64,6 @@ namespace RailroaderStockOptimizer
             Settings.UseVisibilityCheck = GUILayout.Toggle(Settings.UseVisibilityCheck, "Use renderer visibility");
 
             GUILayout.Space(8f);
-
             GUILayout.BeginHorizontal();
             Settings.EnableDebugLogging = GUILayout.Toggle(Settings.EnableDebugLogging, string.Empty, GUILayout.Width(24f));
             GUILayout.Label(Settings.EnableDebugLogging ? "Debug logging: ON" : "Debug logging: OFF");
@@ -77,28 +76,20 @@ namespace RailroaderStockOptimizer
             }
 
             GUILayout.Space(8f);
-
             GUILayout.Label($"Hot Radius: {Settings.HotRadius:F0} m");
             Settings.HotRadius = GUILayout.HorizontalSlider(Settings.HotRadius, 50f, 1000f);
-
             GUILayout.Label($"Warm Radius: {Settings.WarmRadius:F0} m");
             Settings.WarmRadius = GUILayout.HorizontalSlider(Settings.WarmRadius, 100f, 2000f);
-
             GUILayout.Label($"Cold Radius: {Settings.ColdRadius:F0} m");
             Settings.ColdRadius = GUILayout.HorizontalSlider(Settings.ColdRadius, 300f, 5000f);
-
             GUILayout.Label($"Stationary Speed Threshold: {Settings.StationarySpeedThreshold:F3}");
             Settings.StationarySpeedThreshold = GUILayout.HorizontalSlider(Settings.StationarySpeedThreshold, 0.001f, 1.0f);
-
             GUILayout.Label($"Freeze Delay: {Settings.FreezeDelaySeconds:F1} sec");
             Settings.FreezeDelaySeconds = GUILayout.HorizontalSlider(Settings.FreezeDelaySeconds, 1f, 60f);
-
             GUILayout.Label($"Batch Fraction: 1/{Settings.BatchDivider}");
             Settings.BatchDivider = Mathf.RoundToInt(GUILayout.HorizontalSlider(Settings.BatchDivider, 1f, 30f));
-
             GUILayout.Label($"Full Refresh Interval: {Settings.FullRefreshInterval:F1} sec");
             Settings.FullRefreshInterval = GUILayout.HorizontalSlider(Settings.FullRefreshInterval, 0.2f, 10f);
-
             GUILayout.Label($"Player Refresh Interval: {Settings.PlayerRefreshInterval:F1} sec");
             Settings.PlayerRefreshInterval = GUILayout.HorizontalSlider(Settings.PlayerRefreshInterval, 0.1f, 5f);
 
@@ -112,34 +103,24 @@ namespace RailroaderStockOptimizer
 
             GUILayout.Label($"Bubble Grid Size: {Settings.BubbleGridSize:F0} m");
             Settings.BubbleGridSize = GUILayout.HorizontalSlider(Settings.BubbleGridSize, 5000f, 50000f);
-
             GUILayout.Label($"Precision Warning Distance: {Settings.PrecisionWarningDistance:F0} m");
             Settings.PrecisionWarningDistance = GUILayout.HorizontalSlider(Settings.PrecisionWarningDistance, 1000f, 50000f);
-
             GUILayout.Label($"Transfer Recommendation Distance: {Settings.PrecisionTransferDistance:F0} m");
             Settings.PrecisionTransferDistance = GUILayout.HorizontalSlider(Settings.PrecisionTransferDistance, 2000f, 75000f);
-
             GUILayout.Label($"Emergency Distance: {Settings.PrecisionEmergencyDistance:F0} m");
             Settings.PrecisionEmergencyDistance = GUILayout.HorizontalSlider(Settings.PrecisionEmergencyDistance, 5000f, 100000f);
-
             GUILayout.Label($"Better Bubble Margin: {Settings.PrecisionBetterBubbleMargin:F0} m");
             Settings.PrecisionBetterBubbleMargin = GUILayout.HorizontalSlider(Settings.PrecisionBetterBubbleMargin, 500f, 20000f);
-
             GUILayout.Label($"Overlay live sample interval: {Settings.PrecisionOverlaySampleInterval:F1} sec");
             Settings.PrecisionOverlaySampleInterval = GUILayout.HorizontalSlider(Settings.PrecisionOverlaySampleInterval, 0.5f, 5f);
-
             GUILayout.Label($"Held worst sample time: {Settings.PrecisionOverlayWorstHoldSeconds:F1} sec");
             Settings.PrecisionOverlayWorstHoldSeconds = GUILayout.HorizontalSlider(Settings.PrecisionOverlayWorstHoldSeconds, 2f, 30f);
-
             GUILayout.Label($"Consist dry-run rebuild interval: {Settings.ConsistDryRunInterval:F1} sec");
             Settings.ConsistDryRunInterval = GUILayout.HorizontalSlider(Settings.ConsistDryRunInterval, 0.5f, 10f);
-
             GUILayout.Label($"Cached car position max age: {Settings.ConsistCachedPositionMaxAge:F0} sec");
             Settings.ConsistCachedPositionMaxAge = GUILayout.HorizontalSlider(Settings.ConsistCachedPositionMaxAge, 5f, 180f);
-
             GUILayout.Label($"Transfer plan hold time: {Settings.TransferPlanHoldSeconds:F0} sec");
             Settings.TransferPlanHoldSeconds = GUILayout.HorizontalSlider(Settings.TransferPlanHoldSeconds, 5f, 120f);
-
             GUILayout.Label($"Snapshot moving threshold: {Settings.SnapshotMovingSpeedThreshold:F3} m/s");
             Settings.SnapshotMovingSpeedThreshold = GUILayout.HorizontalSlider(Settings.SnapshotMovingSpeedThreshold, 0.001f, 2f);
 
@@ -264,25 +245,19 @@ namespace RailroaderStockOptimizer
     public class Settings : UnityModManager.ModSettings, IDrawable
     {
         public bool EnableOverlay = true;
-
         public bool EnableSleep = false;
         public bool RequireStationaryForSleep = true;
         public bool UseVisibilityCheck = true;
-
         public bool EnableDebugLogging = false;
         public float DebugLogInterval = 5f;
-
         public float HotRadius = 300f;
         public float WarmRadius = 800f;
         public float ColdRadius = 1500f;
-
         public float StationarySpeedThreshold = 0.03f;
         public float FreezeDelaySeconds = 10f;
-
         public int BatchDivider = 10;
         public float FullRefreshInterval = 1.5f;
         public float PlayerRefreshInterval = 0.5f;
-
         public bool EnablePrecisionWatchdog = false;
         public bool PrecisionDryRunOnly = true;
         public bool ShowPrecisionDetailsInOverlay = true;
@@ -395,12 +370,13 @@ namespace RailroaderStockOptimizer
     {
         public string CarId;
         public Car Car;
-
         public GameObject GameObject;
         public Transform Transform;
         public Rigidbody Rigidbody;
+        public string RigidbodySource;
+        public Transform PhysicsTransform;
+        public string PhysicsTransformSource;
         public Renderer[] Renderers;
-
         public ActivityTier Tier;
         public float LastDistance;
         public bool IsVisible;
@@ -408,7 +384,6 @@ namespace RailroaderStockOptimizer
         public float LastMovingTime;
         public int LastProcessedFrame;
         public bool WasSleepingForced;
-
         public string BubbleId;
         public Vector3d BubbleOrigin;
         public Vector3d GlobalPosition;
@@ -418,13 +393,11 @@ namespace RailroaderStockOptimizer
         public bool PrecisionTransferRecommended;
         public bool PrecisionEmergency;
         public string PrecisionTargetBubbleId;
-
         public string PrecisionPositionSource;
         public Vector3 PrecisionTransformPosition;
         public Vector3 PrecisionRigidbodyPosition;
         public Vector3 PrecisionRendererBoundsCenter;
         public Vector3 PrecisionChosenPosition;
-
         public bool HasCachedPosition;
         public Vector3 CachedPosition;
         public string CachedPositionSource;
@@ -438,7 +411,6 @@ namespace RailroaderStockOptimizer
     public static class PrecisionWatchdog
     {
         public const string MainBubbleId = "MainBubble";
-
         public static int EvaluatedCount { get; private set; }
         public static int NonZeroSampleCount { get; private set; }
         public static int ZeroSampleCount { get; private set; }
@@ -454,7 +426,6 @@ namespace RailroaderStockOptimizer
         public static string LastRecommendationStatus { get; private set; } = "none";
         public static string LastRecommendationOriginalText { get; private set; } = "none";
         public static string LastRecommendationCurrentText { get; private set; } = "none";
-
         public static string DisplayCarName { get; private set; } = "waiting for live sample";
         public static string DisplayPositionSource { get; private set; } = "none";
         public static string DisplayTransformPositionText { get; private set; } = "none";
@@ -462,7 +433,6 @@ namespace RailroaderStockOptimizer
         public static string DisplayRendererBoundsCenterText { get; private set; } = "none";
         public static string DisplayChosenPositionText { get; private set; } = "none";
         public static float DisplaySampleAgeSeconds => _displaySampleSetTime > 0f ? Time.realtimeSinceStartup - _displaySampleSetTime : 0f;
-
         public static string LastNonZeroCarName { get; private set; } = "none";
         public static string LastNonZeroPositionSource { get; private set; } = "none";
         public static string LastNonZeroTransformPositionText { get; private set; } = "none";
@@ -471,7 +441,6 @@ namespace RailroaderStockOptimizer
         public static string LastNonZeroChosenPositionText { get; private set; } = "none";
         public static double LastNonZeroLocalDistance { get; private set; }
         public static double LastNonZeroFloatStepMeters { get; private set; }
-
         public static string HeldWorstCarName { get; private set; } = "none";
         public static string HeldWorstPositionSource { get; private set; } = "none";
         public static string HeldWorstTransformPositionText { get; private set; } = "none";
@@ -487,11 +456,6 @@ namespace RailroaderStockOptimizer
         private static float _heldWorstSetTime;
         private static float _heldWorstExpireTime;
         private static float _lastRecommendationSetTime;
-        private static Vector3 _lastRecommendationOriginalPosition;
-        private static double _lastRecommendationOriginalLocalDistance;
-        private static double _lastRecommendationOriginalTargetDistance;
-        private static string _lastRecommendationOriginalBubbleId;
-        private static string _lastRecommendationTargetBubbleId;
 
         public static void Reset()
         {
@@ -510,11 +474,6 @@ namespace RailroaderStockOptimizer
             LastRecommendationOriginalText = "none";
             LastRecommendationCurrentText = "none";
             _lastRecommendationSetTime = 0f;
-            _lastRecommendationOriginalPosition = Vector3.zero;
-            _lastRecommendationOriginalLocalDistance = 0.0;
-            _lastRecommendationOriginalTargetDistance = 0.0;
-            _lastRecommendationOriginalBubbleId = null;
-            _lastRecommendationTargetBubbleId = null;
             ResetPositionDebug();
         }
 
@@ -538,7 +497,6 @@ namespace RailroaderStockOptimizer
             DisplayRigidbodyPositionText = "none";
             DisplayRendererBoundsCenterText = "none";
             DisplayChosenPositionText = "none";
-
             LastNonZeroCarName = "none";
             LastNonZeroPositionSource = "none";
             LastNonZeroTransformPositionText = "none";
@@ -547,7 +505,6 @@ namespace RailroaderStockOptimizer
             LastNonZeroChosenPositionText = "none";
             LastNonZeroLocalDistance = 0.0;
             LastNonZeroFloatStepMeters = 0.0;
-
             HeldWorstCarName = "none";
             HeldWorstPositionSource = "none";
             HeldWorstTransformPositionText = "none";
@@ -589,10 +546,7 @@ namespace RailroaderStockOptimizer
 
             bool nonZero = IsMeaningfullyNonZero(chosenPosition);
             EvaluatedCount++;
-            if (nonZero)
-                NonZeroSampleCount++;
-            else
-                ZeroSampleCount++;
+            if (nonZero) NonZeroSampleCount++; else ZeroSampleCount++;
 
             if (nonZero && Time.realtimeSinceStartup >= _nextDisplaySampleTime)
             {
@@ -634,11 +588,8 @@ namespace RailroaderStockOptimizer
                 LastNonZeroFloatStepMeters = floatStep;
             }
 
-            if (state.PrecisionWarning)
-                WarningCount++;
-
-            if (state.PrecisionEmergency)
-                EmergencyCount++;
+            if (state.PrecisionWarning) WarningCount++;
+            if (state.PrecisionEmergency) EmergencyCount++;
 
             if (localDistance > WorstLocalDistance || EvaluatedCount == 1)
             {
@@ -663,11 +614,6 @@ namespace RailroaderStockOptimizer
                 LastRecommendedCarId = state.CarId;
                 LastRecommendedCarName = state.Name;
                 _lastRecommendationSetTime = Time.realtimeSinceStartup;
-                _lastRecommendationOriginalPosition = chosenPosition;
-                _lastRecommendationOriginalLocalDistance = localDistance;
-                _lastRecommendationOriginalTargetDistance = bestDistance;
-                _lastRecommendationOriginalBubbleId = state.BubbleId;
-                _lastRecommendationTargetBubbleId = best.Id;
                 LastRecommendationOriginalText = $"{state.BubbleId} -> {best.Id}, pos {FormatVector(chosenPosition)}, local {localDistance:F0}m -> {bestDistance:F0}m";
                 LastRecommendation = $"{state.Name}: {state.BubbleId} -> {best.Id}, local {localDistance:F0}m -> {bestDistance:F0}m, source {positionSource}, float step {floatStep * 1000.0:F3}mm";
 
@@ -680,13 +626,6 @@ namespace RailroaderStockOptimizer
                 if (!settings.PrecisionDryRunOnly)
                     Main.DebugLogThrottled("Precision watchdog real transfer is not implemented yet. Staying in dry-run behavior.");
             }
-        }
-
-        public static bool IsLastRecommendationActive()
-        {
-            return !string.IsNullOrEmpty(LastRecommendedCarId) &&
-                   LastRecommendationStatus != null &&
-                   LastRecommendationStatus.StartsWith("active", StringComparison.OrdinalIgnoreCase);
         }
 
         public static void UpdateLastRecommendationStatus(IReadOnlyList<CarState> states)
@@ -753,24 +692,9 @@ namespace RailroaderStockOptimizer
 
             LastRecommendationCurrentText = $"{state.Name}: pos {FormatVector(state.CachedPosition)}, age {age:F1}s, local {currentLocal:F0}m -> {bestDistance:F0}m via {best.Id}";
 
-            if (!farEnough)
-            {
-                LastRecommendationStatus = "stale: car now inside transfer distance";
-                return;
-            }
-
-            if (!different)
-            {
-                LastRecommendationStatus = "stale: best bubble now equals current bubble";
-                return;
-            }
-
-            if (!betterEnough)
-            {
-                LastRecommendationStatus = "stale: target improvement below margin";
-                return;
-            }
-
+            if (!farEnough) { LastRecommendationStatus = "stale: car now inside transfer distance"; return; }
+            if (!different) { LastRecommendationStatus = "stale: best bubble now equals current bubble"; return; }
+            if (!betterEnough) { LastRecommendationStatus = "stale: target improvement below margin"; return; }
             LastRecommendationStatus = "active: still recommends transfer";
         }
 
@@ -787,15 +711,12 @@ namespace RailroaderStockOptimizer
 
         private static void UpdateHeldWorstIfUseful(string carName, string positionSource, Vector3 transformPos, Vector3 rigidbodyPos, Vector3 rendererBoundsCenter, Vector3 chosenPosition, double localDistance, double floatStep, bool nonZero)
         {
-            if (!nonZero)
-                return;
+            if (!nonZero) return;
 
             float now = Time.realtimeSinceStartup;
             bool expired = now >= _heldWorstExpireTime;
             bool worse = localDistance > HeldWorstLocalDistance;
-
-            if (!expired && !worse)
-                return;
+            if (!expired && !worse) return;
 
             HeldWorstCarName = carName;
             HeldWorstPositionSource = positionSource;
@@ -851,21 +772,18 @@ namespace RailroaderStockOptimizer
             return transformPosition;
         }
 
-        private static bool TryGetRendererBoundsCenter(CarState state, out Vector3 center)
+        public static bool TryGetRendererBoundsCenter(CarState state, out Vector3 center)
         {
             center = Vector3.zero;
-
             if (state == null || state.Renderers == null || state.Renderers.Length == 0)
                 return false;
 
             bool hasBounds = false;
             Bounds combined = new Bounds();
-
             for (int i = 0; i < state.Renderers.Length; i++)
             {
                 Renderer renderer = state.Renderers[i];
-                if (renderer == null)
-                    continue;
+                if (renderer == null) continue;
 
                 try
                 {
@@ -884,9 +802,7 @@ namespace RailroaderStockOptimizer
                 }
             }
 
-            if (!hasBounds)
-                return false;
-
+            if (!hasBounds) return false;
             center = combined.center;
             return true;
         }
@@ -905,10 +821,8 @@ namespace RailroaderStockOptimizer
         {
             float rawGrid = Main.Settings != null ? Main.Settings.BubbleGridSize : 20000f;
             double grid = Math.Max(1000.0, rawGrid);
-
             double originX = Math.Round(globalPosition.X / grid) * grid;
             double originZ = Math.Round(globalPosition.Z / grid) * grid;
-
             string id = $"GridBubble[{originX:F0},{originZ:F0}]";
             return new PhysicsBubble(id, new Vector3d(originX, 0.0, originZ));
         }
@@ -916,9 +830,7 @@ namespace RailroaderStockOptimizer
         public static double EstimateFloatStepMeters(double magnitude)
         {
             magnitude = Math.Abs(magnitude);
-            if (magnitude <= 0.0)
-                return 0.0;
-
+            if (magnitude <= 0.0) return 0.0;
             double exponent = Math.Floor(Math.Log(magnitude, 2.0));
             return Math.Pow(2.0, exponent - 23.0);
         }
@@ -928,9 +840,11 @@ namespace RailroaderStockOptimizer
     {
         public string CarName;
         public bool HasTransform;
+        public string TransformSource;
         public Vector3 TransformPosition;
         public Quaternion TransformRotation;
         public bool HasRigidbody;
+        public string RigidbodySource;
         public Vector3 RigidbodyPosition;
         public Quaternion RigidbodyRotation;
         public Vector3 Velocity;
@@ -940,6 +854,306 @@ namespace RailroaderStockOptimizer
         public bool IsMoving;
         public float Speed;
         public float AngularSpeed;
+        public float DistanceToCachedPosition;
+    }
+
+    public static class CarPhysicsResolver
+    {
+        public static void Resolve(CarState state, Vector3 referencePosition, out Transform bestTransform, out string transformSource, out Rigidbody bestRigidbody, out string rigidbodySource)
+        {
+            bestRigidbody = ResolveRigidbody(state, referencePosition, out rigidbodySource);
+            if (bestRigidbody != null)
+            {
+                bestTransform = bestRigidbody.transform;
+                transformSource = rigidbodySource + ".transform";
+                return;
+            }
+
+            bestTransform = ResolveTransform(state, referencePosition, out transformSource);
+        }
+
+        public static Rigidbody ResolveRigidbody(CarState state, Vector3 referencePosition, out string source)
+        {
+            source = "none";
+            if (state == null)
+                return null;
+
+            List<RigidCandidate> candidates = new List<RigidCandidate>();
+
+            GameObject go = state.GameObject;
+            if (go != null)
+            {
+                AddRigid(candidates, go.GetComponent<Rigidbody>(), "root");
+
+                Rigidbody[] children = go.GetComponentsInChildren<Rigidbody>(true);
+                for (int i = 0; i < children.Length; i++)
+                    AddRigid(candidates, children[i], "child");
+
+                Rigidbody parent = go.GetComponentInParent<Rigidbody>();
+                AddRigid(candidates, parent, "parent");
+            }
+
+            AddReflectionRigidbodies(candidates, state.Car);
+
+            Rigidbody best = PickBestRigidbody(candidates, referencePosition, out source);
+            return best;
+        }
+
+        private static void AddRigid(List<RigidCandidate> candidates, Rigidbody rb, string source)
+        {
+            if (rb == null || candidates == null)
+                return;
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                if (candidates[i].Body == rb)
+                    return;
+            }
+
+            RigidCandidate candidate = new RigidCandidate();
+            candidate.Body = rb;
+            candidate.Source = source;
+            candidates.Add(candidate);
+        }
+
+        private static void AddReflectionRigidbodies(List<RigidCandidate> candidates, object obj)
+        {
+            if (obj == null || candidates == null)
+                return;
+
+            BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            Type type = obj.GetType();
+
+            FieldInfo[] fields = type.GetFields(flags);
+            for (int i = 0; i < fields.Length; i++)
+            {
+                FieldInfo field = fields[i];
+                try
+                {
+                    object value = field.GetValue(obj);
+                    AddObjectRigidbodies(candidates, value, "field:" + field.Name);
+                }
+                catch
+                {
+                }
+            }
+
+            PropertyInfo[] props = type.GetProperties(flags);
+            for (int i = 0; i < props.Length; i++)
+            {
+                PropertyInfo prop = props[i];
+                if (prop.GetIndexParameters().Length != 0)
+                    continue;
+
+                try
+                {
+                    object value = prop.GetValue(obj, null);
+                    AddObjectRigidbodies(candidates, value, "prop:" + prop.Name);
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private static void AddObjectRigidbodies(List<RigidCandidate> candidates, object value, string source)
+        {
+            Rigidbody rb = value as Rigidbody;
+            if (rb != null)
+            {
+                AddRigid(candidates, rb, source);
+                return;
+            }
+
+            Component component = value as Component;
+            if (component != null)
+            {
+                AddRigid(candidates, component.GetComponent<Rigidbody>(), source + ".component");
+                AddRigid(candidates, component.GetComponentInChildren<Rigidbody>(true), source + ".child");
+                AddRigid(candidates, component.GetComponentInParent<Rigidbody>(), source + ".parent");
+                return;
+            }
+
+            GameObject go = value as GameObject;
+            if (go != null)
+            {
+                AddRigid(candidates, go.GetComponent<Rigidbody>(), source + ".gameObject");
+                AddRigid(candidates, go.GetComponentInChildren<Rigidbody>(true), source + ".child");
+                AddRigid(candidates, go.GetComponentInParent<Rigidbody>(), source + ".parent");
+            }
+        }
+
+        private static Rigidbody PickBestRigidbody(List<RigidCandidate> candidates, Vector3 referencePosition, out string source)
+        {
+            source = "none";
+            if (candidates == null || candidates.Count == 0)
+                return null;
+
+            bool hasReference = PrecisionWatchdog.IsMeaningfullyNonZero(referencePosition);
+            Rigidbody best = null;
+            float bestScore = float.MaxValue;
+            string bestSource = "none";
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                RigidCandidate c = candidates[i];
+                if (c == null || c.Body == null)
+                    continue;
+
+                float score = hasReference ? (c.Body.position - referencePosition).sqrMagnitude : i;
+                if (best == null || score < bestScore)
+                {
+                    best = c.Body;
+                    bestScore = score;
+                    bestSource = c.Source;
+                }
+            }
+
+            source = bestSource;
+            return best;
+        }
+
+        private static Transform ResolveTransform(CarState state, Vector3 referencePosition, out string source)
+        {
+            source = "none";
+            if (state == null)
+                return null;
+
+            List<TransformCandidate> candidates = new List<TransformCandidate>();
+            AddTransform(candidates, state.Transform, "root");
+
+            if (state.Renderers != null)
+            {
+                for (int i = 0; i < state.Renderers.Length; i++)
+                {
+                    Renderer renderer = state.Renderers[i];
+                    if (renderer != null)
+                        AddTransform(candidates, renderer.transform, "renderer");
+                }
+            }
+
+            AddReflectionTransforms(candidates, state.Car);
+            return PickBestTransform(candidates, referencePosition, out source);
+        }
+
+        private static void AddReflectionTransforms(List<TransformCandidate> candidates, object obj)
+        {
+            if (obj == null || candidates == null)
+                return;
+
+            BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            Type type = obj.GetType();
+
+            FieldInfo[] fields = type.GetFields(flags);
+            for (int i = 0; i < fields.Length; i++)
+            {
+                try
+                {
+                    object value = fields[i].GetValue(obj);
+                    AddObjectTransforms(candidates, value, "field:" + fields[i].Name);
+                }
+                catch
+                {
+                }
+            }
+
+            PropertyInfo[] props = type.GetProperties(flags);
+            for (int i = 0; i < props.Length; i++)
+            {
+                PropertyInfo prop = props[i];
+                if (prop.GetIndexParameters().Length != 0)
+                    continue;
+
+                try
+                {
+                    object value = prop.GetValue(obj, null);
+                    AddObjectTransforms(candidates, value, "prop:" + prop.Name);
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private static void AddObjectTransforms(List<TransformCandidate> candidates, object value, string source)
+        {
+            Transform transform = value as Transform;
+            if (transform != null)
+            {
+                AddTransform(candidates, transform, source);
+                return;
+            }
+
+            Component component = value as Component;
+            if (component != null)
+            {
+                AddTransform(candidates, component.transform, source + ".component");
+                return;
+            }
+
+            GameObject go = value as GameObject;
+            if (go != null)
+                AddTransform(candidates, go.transform, source + ".gameObject");
+        }
+
+        private static void AddTransform(List<TransformCandidate> candidates, Transform transform, string source)
+        {
+            if (transform == null || candidates == null)
+                return;
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                if (candidates[i].Transform == transform)
+                    return;
+            }
+
+            TransformCandidate candidate = new TransformCandidate();
+            candidate.Transform = transform;
+            candidate.Source = source;
+            candidates.Add(candidate);
+        }
+
+        private static Transform PickBestTransform(List<TransformCandidate> candidates, Vector3 referencePosition, out string source)
+        {
+            source = "none";
+            if (candidates == null || candidates.Count == 0)
+                return null;
+
+            bool hasReference = PrecisionWatchdog.IsMeaningfullyNonZero(referencePosition);
+            Transform best = null;
+            float bestScore = float.MaxValue;
+            string bestSource = "none";
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                TransformCandidate c = candidates[i];
+                if (c == null || c.Transform == null)
+                    continue;
+
+                float score = hasReference ? (c.Transform.position - referencePosition).sqrMagnitude : i;
+                if (best == null || score < bestScore)
+                {
+                    best = c.Transform;
+                    bestScore = score;
+                    bestSource = c.Source;
+                }
+            }
+
+            source = bestSource;
+            return best;
+        }
+
+        private sealed class RigidCandidate
+        {
+            public Rigidbody Body;
+            public string Source;
+        }
+
+        private sealed class TransformCandidate
+        {
+            public Transform Transform;
+            public string Source;
+        }
     }
 
     public static class ConsistDryRun
@@ -1026,8 +1240,7 @@ namespace RailroaderStockOptimizer
             if (!_forceRebuild && now < _nextRebuildTime)
                 return;
 
-            bool wasForced = _forceRebuild;
-            string reason = wasForced ? _forceReason : "interval";
+            string reason = _forceRebuild ? _forceReason : "interval";
             _forceRebuild = false;
             _forceReason = "none";
 
@@ -1059,8 +1272,8 @@ namespace RailroaderStockOptimizer
 
             float now = Time.realtimeSinceStartup;
             float maxAge = Main.Settings != null ? Main.Settings.ConsistCachedPositionMaxAge : 60f;
-
             Dictionary<string, CarState> stateById = new Dictionary<string, CarState>(carStates.Count);
+
             for (int i = 0; i < carStates.Count; i++)
             {
                 CarState state = carStates[i];
@@ -1075,10 +1288,8 @@ namespace RailroaderStockOptimizer
 
                 if (state.HasCachedPosition)
                 {
-                    if (now - state.CachedPositionTime <= maxAge)
-                        CachedUsableCarCount++;
-                    else
-                        ExpiredCacheCount++;
+                    if (now - state.CachedPositionTime <= maxAge) CachedUsableCarCount++;
+                    else ExpiredCacheCount++;
                 }
             }
 
@@ -1091,14 +1302,12 @@ namespace RailroaderStockOptimizer
                 CarState seedState = carStates[i];
                 if (seedState == null || seedState.Car == null || string.IsNullOrEmpty(seedState.CarId))
                     continue;
-
                 if (processed.Contains(seedState.CarId))
                     continue;
 
                 coupledCars.Clear();
                 cachedStates.Clear();
                 CollectCoupledCars(seedState.Car, coupledCars);
-
                 if (coupledCars.Count == 0)
                     coupledCars.Add(seedState.Car);
 
@@ -1109,7 +1318,6 @@ namespace RailroaderStockOptimizer
                         continue;
 
                     processed.Add(car.id);
-
                     CarState state;
                     if (!stateById.TryGetValue(car.id, out state))
                         continue;
@@ -1128,8 +1336,7 @@ namespace RailroaderStockOptimizer
         private static void CollectCoupledCars(Car seed, List<Car> output)
         {
             output.Clear();
-            if (seed == null)
-                return;
+            if (seed == null) return;
 
             try
             {
@@ -1172,24 +1379,20 @@ namespace RailroaderStockOptimizer
                 CarState state = cachedStates[i];
                 Vector3d pos = Vector3d.FromVector3(state.CachedPosition);
                 sum += pos;
-
                 double carDistance = Vector3d.Distance(pos, state.BubbleOrigin);
                 if (carDistance > worstCarDistance)
                 {
                     worstCarDistance = carDistance;
                     worstCarName = state.Name;
                 }
-
                 float age = now - state.CachedPositionTime;
-                if (age > oldestAge)
-                    oldestAge = age;
+                if (age > oldestAge) oldestAge = age;
             }
 
             Vector3d center = new Vector3d(sum.X / cachedStates.Count, sum.Y / cachedStates.Count, sum.Z / cachedStates.Count);
             CarState first = cachedStates[0];
             Vector3d currentOrigin = first.BubbleOrigin;
             string currentBubbleId = string.IsNullOrEmpty(first.BubbleId) ? PrecisionWatchdog.MainBubbleId : first.BubbleId;
-
             double localDistance = Vector3d.Distance(center, currentOrigin);
             double localMagnitude = Math.Max(Math.Abs(center.X - currentOrigin.X), Math.Abs(center.Z - currentOrigin.Z));
             double floatStep = PrecisionWatchdog.EstimateFloatStepMeters(localMagnitude);
@@ -1224,14 +1427,17 @@ namespace RailroaderStockOptimizer
             if (cachedStates == null || cachedStates.Count == 0 || targetBubble == null)
                 return;
 
+            bool incomplete = cachedStates.Count < coupledCount;
             List<RigidbodySnapshot> snapshots = Main.Settings != null && Main.Settings.EnableRigidbodySnapshotDryRun
                 ? CaptureRigidbodySnapshots(cachedStates)
                 : new List<RigidbodySnapshot>();
 
-            TransferPlanSummary = $"{cachedStates.Count}/{coupledCount} cached cars: {currentBubbleId} -> {targetBubble.Id}, center {localDistance:F0}m -> {targetDistance:F0}m";
+            TransferPlanSummary = $"{(incomplete ? "INCOMPLETE - " : string.Empty)}{cachedStates.Count}/{coupledCount} cached cars: {currentBubbleId} -> {targetBubble.Id}, center {localDistance:F0}m -> {targetDistance:F0}m";
 
             List<string> lines = new List<string>();
             lines.Add("DRY-RUN ONLY - no transforms or rigidbodies moved");
+            if (incomplete)
+                lines.Add($"NOT SAFE TO MOVE YET - missing cached positions for {coupledCount - cachedStates.Count} coupled car(s)");
             lines.Add($"Current bubble: {currentBubbleId} origin {FormatVector(currentOrigin)}");
             lines.Add($"Target bubble: {targetBubble.Id} origin {FormatVector(targetBubble.GlobalOrigin)}");
             lines.Add($"Center global: {FormatVector(center)}");
@@ -1254,7 +1460,7 @@ namespace RailroaderStockOptimizer
                 lines.Add($"... plus {cachedStates.Count - limit} more cached car(s)");
 
             TransferPlanDetails = string.Join("\n", lines.ToArray());
-            BuildSnapshotSummaryAndDetails(snapshots, cachedStates.Count);
+            BuildSnapshotSummaryAndDetails(snapshots, cachedStates.Count, incomplete);
 
             _transferPlanSetTime = Time.realtimeSinceStartup;
             float hold = Main.Settings != null ? Main.Settings.TransferPlanHoldSeconds : 30f;
@@ -1264,37 +1470,54 @@ namespace RailroaderStockOptimizer
         private static List<RigidbodySnapshot> CaptureRigidbodySnapshots(List<CarState> states)
         {
             List<RigidbodySnapshot> snapshots = new List<RigidbodySnapshot>(states != null ? states.Count : 0);
-            if (states == null)
-                return snapshots;
+            if (states == null) return snapshots;
 
             float movingThreshold = Main.Settings != null ? Main.Settings.SnapshotMovingSpeedThreshold : 0.03f;
 
             for (int i = 0; i < states.Count; i++)
             {
                 CarState state = states[i];
+                Vector3 reference = state != null && state.HasCachedPosition ? state.CachedPosition : Vector3.zero;
+                Transform transform;
+                string transformSource;
+                Rigidbody rb;
+                string rbSource;
+                CarPhysicsResolver.Resolve(state, reference, out transform, out transformSource, out rb, out rbSource);
+
+                if (state != null)
+                {
+                    state.Rigidbody = rb;
+                    state.RigidbodySource = rbSource;
+                    state.PhysicsTransform = transform;
+                    state.PhysicsTransformSource = transformSource;
+                }
+
                 RigidbodySnapshot snap = new RigidbodySnapshot
                 {
                     CarName = state != null ? state.Name : "<null>",
-                    HasTransform = state != null && state.Transform != null,
-                    HasRigidbody = state != null && state.Rigidbody != null,
-                    WasForcedSleeping = state != null && state.WasSleepingForced
+                    HasTransform = transform != null,
+                    TransformSource = transformSource,
+                    HasRigidbody = rb != null,
+                    RigidbodySource = rbSource,
+                    WasForcedSleeping = state != null && state.WasSleepingForced,
+                    DistanceToCachedPosition = transform != null && PrecisionWatchdog.IsMeaningfullyNonZero(reference) ? Vector3.Distance(transform.position, reference) : -1f
                 };
 
                 if (snap.HasTransform)
                 {
-                    snap.TransformPosition = state.Transform.position;
-                    snap.TransformRotation = state.Transform.rotation;
+                    snap.TransformPosition = transform.position;
+                    snap.TransformRotation = transform.rotation;
                 }
 
                 if (snap.HasRigidbody)
                 {
                     try
                     {
-                        snap.RigidbodyPosition = state.Rigidbody.position;
-                        snap.RigidbodyRotation = state.Rigidbody.rotation;
-                        snap.Velocity = state.Rigidbody.velocity;
-                        snap.AngularVelocity = state.Rigidbody.angularVelocity;
-                        snap.IsSleeping = state.Rigidbody.IsSleeping();
+                        snap.RigidbodyPosition = rb.position;
+                        snap.RigidbodyRotation = rb.rotation;
+                        snap.Velocity = rb.velocity;
+                        snap.AngularVelocity = rb.angularVelocity;
+                        snap.IsSleeping = rb.IsSleeping();
                         snap.Speed = snap.Velocity.magnitude;
                         snap.AngularSpeed = snap.AngularVelocity.magnitude;
                         snap.IsMoving = snap.Speed > movingThreshold || snap.AngularSpeed > movingThreshold;
@@ -1302,6 +1525,7 @@ namespace RailroaderStockOptimizer
                     catch
                     {
                         snap.HasRigidbody = false;
+                        snap.RigidbodySource = "read failed";
                     }
                 }
 
@@ -1311,7 +1535,7 @@ namespace RailroaderStockOptimizer
             return snapshots;
         }
 
-        private static void BuildSnapshotSummaryAndDetails(List<RigidbodySnapshot> snapshots, int expectedCars)
+        private static void BuildSnapshotSummaryAndDetails(List<RigidbodySnapshot> snapshots, int expectedCars, bool incompletePlan)
         {
             if (Main.Settings == null || !Main.Settings.EnableRigidbodySnapshotDryRun)
             {
@@ -1333,12 +1557,12 @@ namespace RailroaderStockOptimizer
             int awake = 0;
             int moving = 0;
             int forcedSleeping = 0;
+            int farTransform = 0;
 
             for (int i = 0; i < snapshots.Count; i++)
             {
                 RigidbodySnapshot snap = snapshots[i];
-                if (snap == null)
-                    continue;
+                if (snap == null) continue;
 
                 if (snap.HasRigidbody)
                 {
@@ -1351,14 +1575,19 @@ namespace RailroaderStockOptimizer
                     missingRb++;
                 }
 
+                if (snap.DistanceToCachedPosition > 25f)
+                    farTransform++;
+
                 if (snap.WasForcedSleeping)
                     forcedSleeping++;
             }
 
-            SnapshotSummary = $"snap {snapshots.Count}/{expectedCars}, rb {rbCount}, missing {missingRb}, sleep/awake {sleeping}/{awake}, moving {moving}, forced {forcedSleeping}";
+            SnapshotSummary = $"snap {snapshots.Count}/{expectedCars}, rb {rbCount}, missing {missingRb}, sleep/awake {sleeping}/{awake}, moving {moving}, forced {forcedSleeping}, farT {farTransform}";
 
             List<string> lines = new List<string>();
             lines.Add("Snapshot dry-run - captured state only, no restore/apply yet");
+            if (incompletePlan)
+                lines.Add("WARNING: transfer plan is incomplete until every coupled car has a cached position");
             lines.Add(SnapshotSummary);
             lines.Add("First 6 snapshots:");
 
@@ -1366,28 +1595,23 @@ namespace RailroaderStockOptimizer
             for (int i = 0; i < limit; i++)
             {
                 RigidbodySnapshot snap = snapshots[i];
-                if (snap == null)
-                    continue;
+                if (snap == null) continue;
+
+                string distText = snap.DistanceToCachedPosition >= 0f ? $", refΔ {snap.DistanceToCachedPosition:F1}m" : string.Empty;
 
                 if (!snap.HasRigidbody)
                 {
-                    lines.Add($"{i + 1}. {snap.CarName}: no Rigidbody, transform {FormatVector(Vector3d.FromVector3(snap.TransformPosition))}, rot {FormatEuler(snap.TransformRotation)}");
+                    lines.Add($"{i + 1}. {snap.CarName}: no Rigidbody via {snap.RigidbodySource}, tSrc {snap.TransformSource}, tPos {PrecisionWatchdog.FormatVector(snap.TransformPosition)}{distText}");
                     continue;
                 }
 
-                lines.Add($"{i + 1}. {snap.CarName}: rbPos {PrecisionWatchdog.FormatVector(snap.RigidbodyPosition)}, rbRot {FormatEuler(snap.RigidbodyRotation)}, vel {PrecisionWatchdog.FormatVector(snap.Velocity)} ({snap.Speed:F2}m/s), ang {snap.AngularSpeed:F2}, sleeping {snap.IsSleeping}");
+                lines.Add($"{i + 1}. {snap.CarName}: rbSrc {snap.RigidbodySource}, rbPos {PrecisionWatchdog.FormatVector(snap.RigidbodyPosition)}, vel {PrecisionWatchdog.FormatVector(snap.Velocity)} ({snap.Speed:F2}m/s), ang {snap.AngularSpeed:F2}, sleep {snap.IsSleeping}{distText}");
             }
 
             if (snapshots.Count > limit)
                 lines.Add($"... plus {snapshots.Count - limit} more snapshot(s)");
 
             SnapshotDetails = string.Join("\n", lines.ToArray());
-        }
-
-        private static string FormatEuler(Quaternion rotation)
-        {
-            Vector3 e = rotation.eulerAngles;
-            return $"{e.x:F0},{e.y:F0},{e.z:F0}";
         }
 
         private static string FormatVector(Vector3d value)
@@ -1400,7 +1624,6 @@ namespace RailroaderStockOptimizer
     {
         private static readonly List<CarState> _cars = new List<CarState>(1024);
         private static readonly Dictionary<string, CarState> _carById = new Dictionary<string, CarState>(1024);
-
         private static int _cursor;
         private static Transform _playerAnchor;
 
@@ -1432,13 +1655,11 @@ namespace RailroaderStockOptimizer
             for (int i = 0; i < _cars.Count; i++)
             {
                 CarState car = _cars[i];
-                if (car?.Rigidbody == null) continue;
-
+                if (car == null || car.Rigidbody == null) continue;
                 try
                 {
                     if (car.WasSleepingForced)
                         car.Rigidbody.WakeUp();
-
                     car.WasSleepingForced = false;
                 }
                 catch
@@ -1464,14 +1685,13 @@ namespace RailroaderStockOptimizer
                 }
 
                 FieldInfo recordsField = typeof(CarCuller).GetField("_records", BindingFlags.NonPublic | BindingFlags.Instance);
-
                 if (recordsField == null)
                 {
                     Main.Log("RefreshCars: _records field not found on CarCuller.");
                     return;
                 }
 
-                var records = recordsField.GetValue(culler) as System.Collections.IList;
+                System.Collections.IList records = recordsField.GetValue(culler) as System.Collections.IList;
                 if (records == null)
                 {
                     Main.Log("RefreshCars: _records is null.");
@@ -1483,31 +1703,25 @@ namespace RailroaderStockOptimizer
                 foreach (object record in records)
                 {
                     if (record == null) continue;
-
                     FieldInfo carField = record.GetType().GetField("Car", BindingFlags.Public | BindingFlags.Instance);
                     if (carField == null) continue;
-
                     Car car = carField.GetValue(record) as Car;
-                    if (car == null) continue;
-                    if (string.IsNullOrEmpty(car.id)) continue;
+                    if (car == null || string.IsNullOrEmpty(car.id)) continue;
 
                     string id = car.id;
                     seen.Add(id);
-
                     if (_carById.ContainsKey(id))
                         continue;
 
                     GameObject go = car.gameObject;
-                    Rigidbody rb = go != null ? go.GetComponent<Rigidbody>() : null;
-
+                    Renderer[] renderers = go != null ? go.GetComponentsInChildren<Renderer>(true) : new Renderer[0];
                     CarState state = new CarState
                     {
                         CarId = id,
                         Car = car,
                         GameObject = go,
                         Transform = go != null ? go.transform : null,
-                        Rigidbody = rb,
-                        Renderers = go != null ? go.GetComponentsInChildren<Renderer>(true) : Array.Empty<Renderer>(),
+                        Renderers = renderers,
                         Tier = ActivityTier.Hot,
                         LastDistance = 0f,
                         IsVisible = car.IsVisible,
@@ -1518,24 +1732,29 @@ namespace RailroaderStockOptimizer
                         BubbleId = PrecisionWatchdog.MainBubbleId,
                         BubbleOrigin = Vector3d.Zero,
                         GlobalPosition = go != null ? Vector3d.FromVector3(go.transform.position) : Vector3d.Zero,
-                        PrecisionLocalDistance = 0.0,
-                        PrecisionFloatStepMeters = 0.0,
-                        PrecisionWarning = false,
-                        PrecisionTransferRecommended = false,
-                        PrecisionEmergency = false,
-                        PrecisionTargetBubbleId = null,
                         PrecisionPositionSource = "none",
-                        PrecisionTransformPosition = go != null ? go.transform.position : Vector3.zero,
-                        PrecisionRigidbodyPosition = rb != null ? rb.position : Vector3.zero,
-                        PrecisionRendererBoundsCenter = Vector3.zero,
-                        PrecisionChosenPosition = go != null ? go.transform.position : Vector3.zero,
-                        HasCachedPosition = false,
-                        CachedPosition = Vector3.zero,
                         CachedPositionSource = "none",
-                        CachedPositionTime = 0f,
-                        CachedLocalDistance = 0.0,
-                        CachedFloatStepMeters = 0.0
+                        RigidbodySource = "none",
+                        PhysicsTransformSource = "none"
                     };
+
+                    Vector3 refPos;
+                    if (!PrecisionWatchdog.TryGetRendererBoundsCenter(state, out refPos))
+                        refPos = state.Transform != null ? state.Transform.position : Vector3.zero;
+
+                    Transform physTransform;
+                    string transformSource;
+                    Rigidbody rb;
+                    string rbSource;
+                    CarPhysicsResolver.Resolve(state, refPos, out physTransform, out transformSource, out rb, out rbSource);
+                    state.Rigidbody = rb;
+                    state.RigidbodySource = rbSource;
+                    state.PhysicsTransform = physTransform;
+                    state.PhysicsTransformSource = transformSource;
+                    state.PrecisionRigidbodyPosition = rb != null ? rb.position : Vector3.zero;
+                    state.PrecisionRendererBoundsCenter = refPos;
+                    state.PrecisionChosenPosition = go != null ? go.transform.position : Vector3.zero;
+                    state.PrecisionTransformPosition = go != null ? go.transform.position : Vector3.zero;
 
                     _cars.Add(state);
                     _carById[id] = state;
@@ -1559,7 +1778,6 @@ namespace RailroaderStockOptimizer
 
                         if (!string.IsNullOrEmpty(state.CarId))
                             _carById.Remove(state.CarId);
-
                         _cars.RemoveAt(i);
                     }
                 }
@@ -1575,9 +1793,7 @@ namespace RailroaderStockOptimizer
         public static void Tick(float deltaTime)
         {
             if (_cars.Count == 0) return;
-
             double start = Time.realtimeSinceStartupAsDouble;
-
             int batchDivider = Mathf.Max(1, Main.Settings.BatchDivider);
             int batchSize = Mathf.Max(1, _cars.Count / batchDivider);
 
@@ -1586,16 +1802,12 @@ namespace RailroaderStockOptimizer
 
             for (int i = 0; i < batchSize; i++)
             {
-                if (_cursor >= _cars.Count)
-                    _cursor = 0;
-
+                if (_cursor >= _cars.Count) _cursor = 0;
                 CarState state = _cars[_cursor++];
-                if (state == null || state.GameObject == null || state.Transform == null)
-                    continue;
+                if (state == null || state.GameObject == null || state.Transform == null) continue;
 
                 UpdateTier(state);
                 ApplyOptimizations(state);
-
                 if (Main.Settings.EnablePrecisionWatchdog)
                     PrecisionWatchdog.Evaluate(state);
             }
@@ -1604,23 +1816,14 @@ namespace RailroaderStockOptimizer
             WarmCount = 0;
             ColdCount = 0;
             FrozenCount = 0;
-
             for (int i = 0; i < _cars.Count; i++)
             {
                 switch (_cars[i].Tier)
                 {
-                    case ActivityTier.Hot:
-                        HotCount++;
-                        break;
-                    case ActivityTier.Warm:
-                        WarmCount++;
-                        break;
-                    case ActivityTier.Cold:
-                        ColdCount++;
-                        break;
-                    case ActivityTier.Frozen:
-                        FrozenCount++;
-                        break;
+                    case ActivityTier.Hot: HotCount++; break;
+                    case ActivityTier.Warm: WarmCount++; break;
+                    case ActivityTier.Cold: ColdCount++; break;
+                    case ActivityTier.Frozen: FrozenCount++; break;
                 }
             }
 
@@ -1635,46 +1838,26 @@ namespace RailroaderStockOptimizer
             float dist = GetDistanceToPlayer(state);
             bool visible = IsVisible(state);
             bool moving = IsMoving(state);
-
             state.LastDistance = dist;
             state.IsVisible = visible;
             state.IsMoving = moving;
-
-            if (moving)
-                state.LastMovingTime = Time.time;
+            if (moving) state.LastMovingTime = Time.time;
 
             float hot = Mathf.Min(Main.Settings.HotRadius, Main.Settings.WarmRadius);
             float warm = Mathf.Max(Main.Settings.HotRadius, Main.Settings.WarmRadius);
             float cold = Mathf.Max(warm, Main.Settings.ColdRadius);
-
             float idleTime = Time.time - state.LastMovingTime;
 
-            if (moving || dist <= hot)
-            {
-                state.Tier = ActivityTier.Hot;
-                return;
-            }
-
-            if (dist <= warm || (visible && dist <= cold))
-            {
-                state.Tier = ActivityTier.Warm;
-                return;
-            }
-
-            if (dist > warm && idleTime >= Main.Settings.FreezeDelaySeconds)
-            {
-                state.Tier = ActivityTier.Frozen;
-                return;
-            }
-
+            if (moving || dist <= hot) { state.Tier = ActivityTier.Hot; return; }
+            if (dist <= warm || (visible && dist <= cold)) { state.Tier = ActivityTier.Warm; return; }
+            if (dist > warm && idleTime >= Main.Settings.FreezeDelaySeconds) { state.Tier = ActivityTier.Frozen; return; }
             state.Tier = ActivityTier.Cold;
         }
 
         private static void ApplyOptimizations(CarState state)
         {
             int frame = Time.frameCount;
-            if (state.LastProcessedFrame == frame)
-                return;
+            if (state.LastProcessedFrame == frame) return;
 
             switch (state.Tier)
             {
@@ -1682,19 +1865,16 @@ namespace RailroaderStockOptimizer
                     state.LastProcessedFrame = frame;
                     RestoreIfNeeded(state);
                     break;
-
                 case ActivityTier.Warm:
                     if ((frame % 3) != 0) return;
                     state.LastProcessedFrame = frame;
                     RestoreIfNeeded(state);
                     break;
-
                 case ActivityTier.Cold:
                     if ((frame % 10) != 0) return;
                     state.LastProcessedFrame = frame;
                     TrySleep(state);
                     break;
-
                 case ActivityTier.Frozen:
                     if ((frame % 30) != 0) return;
                     state.LastProcessedFrame = frame;
@@ -1708,7 +1888,6 @@ namespace RailroaderStockOptimizer
             if (!Main.Settings.EnableSleep) return;
             if (state.Rigidbody == null) return;
             if (Main.Settings.RequireStationaryForSleep && state.IsMoving) return;
-
             try
             {
                 if (!state.Rigidbody.IsSleeping())
@@ -1725,17 +1904,9 @@ namespace RailroaderStockOptimizer
         private static void RestoreIfNeeded(CarState state)
         {
             if (state.Rigidbody == null) return;
-
             if (state.WasSleepingForced)
             {
-                try
-                {
-                    state.Rigidbody.WakeUp();
-                }
-                catch
-                {
-                }
-
+                try { state.Rigidbody.WakeUp(); } catch { }
                 state.WasSleepingForced = false;
             }
         }
@@ -1745,9 +1916,7 @@ namespace RailroaderStockOptimizer
             if (_playerAnchor == null)
             {
                 Transform fallback = Camera.main != null ? Camera.main.transform : null;
-                if (fallback == null || state.Transform == null)
-                    return float.MaxValue;
-
+                if (fallback == null || state.Transform == null) return float.MaxValue;
                 return Vector3.Distance(fallback.position, state.Transform.position);
             }
 
@@ -1756,27 +1925,19 @@ namespace RailroaderStockOptimizer
 
         private static bool IsVisible(CarState state)
         {
-            if (state == null || state.Car == null)
-                return false;
-
-            return state.Car.IsVisible;
+            return state != null && state.Car != null && state.Car.IsVisible;
         }
 
         private static bool IsMoving(CarState state)
         {
-            if (state == null || state.Car == null)
-                return false;
-
-            return Mathf.Abs(state.Car.velocity) > Main.Settings.StationarySpeedThreshold;
+            return state != null && state.Car != null && Mathf.Abs(state.Car.velocity) > Main.Settings.StationarySpeedThreshold;
         }
 
         private static Transform FindPlayerAnchor()
         {
             try
             {
-                if (Camera.main != null)
-                    return Camera.main.transform;
-
+                if (Camera.main != null) return Camera.main.transform;
                 Camera[] cams = UnityEngine.Object.FindObjectsOfType<Camera>(true);
                 for (int i = 0; i < cams.Length; i++)
                 {
@@ -1804,44 +1965,33 @@ namespace RailroaderStockOptimizer
         {
             if (!Main.Enabled) return;
             if (!Main.Settings.EnableOverlay) return;
-
             float maxWidth = Mathf.Max(560f, Screen.width - 40f);
             float maxHeight = Mathf.Max(300f, Screen.height - 60f);
-            if (_windowRect.width > maxWidth)
-                _windowRect.width = maxWidth;
-            if (_windowRect.height > maxHeight)
-                _windowRect.height = maxHeight;
-
+            if (_windowRect.width > maxWidth) _windowRect.width = maxWidth;
+            if (_windowRect.height > maxHeight) _windowRect.height = maxHeight;
             _windowRect = GUI.Window(444123, _windowRect, DrawWindow, "Stock Optimizer");
         }
 
         private void DrawWindow(int id)
         {
             EnsureStyles();
-
             float scrollWidth = Mathf.Max(540f, _windowRect.width - 24f);
             float scrollHeight = Mathf.Max(160f, _windowRect.height - 34f);
             _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Width(scrollWidth), GUILayout.Height(scrollHeight));
-
             DrawTopColumns(scrollWidth);
-
             if (Main.Settings.EnablePrecisionWatchdog && Main.Settings.ShowPrecisionDetailsInOverlay)
             {
                 DrawRecommendationAndSamples(scrollWidth);
-
                 if (Main.Settings.EnableConsistDryRun)
                     DrawTransferPlan(scrollWidth);
             }
-
             GUILayout.EndScrollView();
             GUI.DragWindow(new Rect(0f, 0f, 10000f, 20f));
         }
 
         private void EnsureStyles()
         {
-            if (_label != null)
-                return;
-
+            if (_label != null) return;
             _label = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 10,
@@ -1851,26 +2001,14 @@ namespace RailroaderStockOptimizer
                 fixedHeight = 14f,
                 clipping = TextClipping.Clip
             };
-
-            _header = new GUIStyle(_label)
-            {
-                fontStyle = FontStyle.Bold,
-                fixedHeight = 15f
-            };
-
-            _box = new GUIStyle(GUI.skin.box)
-            {
-                margin = new RectOffset(1, 1, 1, 1),
-                padding = new RectOffset(3, 3, 2, 2)
-            };
+            _header = new GUIStyle(_label) { fontStyle = FontStyle.Bold, fixedHeight = 15f };
+            _box = new GUIStyle(GUI.skin.box) { margin = new RectOffset(1, 1, 1, 1), padding = new RectOffset(3, 3, 2, 2) };
         }
 
         private void DrawTopColumns(float width)
         {
             float col = Mathf.Max(180f, (width - 18f) / 3f);
-
             GUILayout.BeginHorizontal();
-
             GUILayout.BeginVertical(_box, GUILayout.Width(col));
             Header("Stock");
             Row("Tracked", PerfManager.TrackedCount.ToString());
@@ -1878,7 +2016,6 @@ namespace RailroaderStockOptimizer
             Row("Cold/Frozen", $"{PerfManager.ColdCount}/{PerfManager.FrozenCount}");
             Row("Pass", $"{PerfManager.LastPassMs:F3} ms");
             GUILayout.EndVertical();
-
             GUILayout.BeginVertical(_box, GUILayout.Width(col));
             Header("Precision");
             Row("Eval L/Z", $"{PrecisionWatchdog.EvaluatedCount}  {PrecisionWatchdog.NonZeroSampleCount}/{PrecisionWatchdog.ZeroSampleCount}");
@@ -1886,7 +2023,6 @@ namespace RailroaderStockOptimizer
             Row("Batch worst", $"{PrecisionWatchdog.WorstLocalDistance:F0} m");
             Row("Float step", $"{PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
             GUILayout.EndVertical();
-
             GUILayout.BeginVertical(_box, GUILayout.Width(col));
             Header("Consists");
             Row("Source/cache", $"{ConsistDryRun.SourceCarCount}/{ConsistDryRun.CachedUsableCarCount}");
@@ -1894,16 +2030,13 @@ namespace RailroaderStockOptimizer
             Row("Groups/largest", $"{ConsistDryRun.GroupCount}/{ConsistDryRun.LargestGroupSize}");
             Row("Move groups", ConsistDryRun.RecommendedGroupCount.ToString());
             GUILayout.EndVertical();
-
             GUILayout.EndHorizontal();
         }
 
         private void DrawRecommendationAndSamples(float width)
         {
             float col = Mathf.Max(260f, (width - 14f) * 0.5f);
-
             GUILayout.BeginHorizontal();
-
             GUILayout.BeginVertical(_box, GUILayout.Width(col));
             Header("Recommendation");
             Row("Status", PrecisionWatchdog.LastRecommendationStatus);
@@ -1917,7 +2050,6 @@ namespace RailroaderStockOptimizer
             ClipLabel("Move: " + ConsistDryRun.LastRecommendation);
             Row("Rebuild", $"{ConsistDryRun.LastRebuildAgeSeconds:F1}s, {ConsistDryRun.LastRebuildReason}");
             GUILayout.EndVertical();
-
             GUILayout.BeginVertical(_box, GUILayout.Width(col));
             Header("Samples");
             Row("Live car", PrecisionWatchdog.DisplayCarName);
@@ -1931,7 +2063,6 @@ namespace RailroaderStockOptimizer
             Row("Worst pos", PrecisionWatchdog.HeldWorstChosenPositionText);
             Row("Worst dist", $"{PrecisionWatchdog.HeldWorstLocalDistance:F0} m / {PrecisionWatchdog.HeldWorstFloatStepMeters * 1000.0:F3} mm");
             GUILayout.EndVertical();
-
             GUILayout.EndHorizontal();
         }
 
@@ -1942,7 +2073,6 @@ namespace RailroaderStockOptimizer
             Row("Plan age", $"{ConsistDryRun.TransferPlanAgeSeconds:F1}s");
             ClipLabel("Summary: " + ConsistDryRun.TransferPlanSummary);
             ClipLabel("Snapshot: " + ConsistDryRun.SnapshotSummary);
-
             GUILayout.BeginHorizontal();
             GUILayout.BeginVertical(GUILayout.Width((width - 16f) * 0.5f));
             DrawMultilineCompact(ConsistDryRun.TransferPlanDetails, 9);
@@ -1951,7 +2081,6 @@ namespace RailroaderStockOptimizer
             DrawMultilineCompact(ConsistDryRun.SnapshotDetails, 9);
             GUILayout.EndVertical();
             GUILayout.EndHorizontal();
-
             GUILayout.EndVertical();
         }
 
@@ -1985,7 +2114,6 @@ namespace RailroaderStockOptimizer
             int count = Mathf.Min(maxLines, lines.Length);
             for (int i = 0; i < count; i++)
                 ClipLabel(lines[i]);
-
             if (lines.Length > count)
                 ClipLabel($"... plus {lines.Length - count} more line(s)");
         }
