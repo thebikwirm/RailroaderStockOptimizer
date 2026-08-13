@@ -24,6 +24,7 @@ namespace RailroaderStockOptimizer
         {
             ModEntry = modEntry;
             Settings = UnityModManager.ModSettings.Load<Settings>(modEntry) ?? new Settings();
+            RepairDebugSettingsForBubbleBranch();
 
             modEntry.OnToggle = OnToggle;
             modEntry.OnGUI = OnGUI;
@@ -34,12 +35,30 @@ namespace RailroaderStockOptimizer
             return true;
         }
 
+        private static void RepairDebugSettingsForBubbleBranch()
+        {
+            if (Settings == null)
+                return;
+
+            // This branch exists specifically for precision / bubble testing. Keep the debug pipeline visible
+            // even if an older settings.xml had some of these toggles off.
+            Settings.EnableOverlay = true;
+            Settings.EnablePrecisionWatchdog = true;
+            Settings.ShowPrecisionDetailsInOverlay = true;
+            Settings.EnableConsistDryRun = true;
+            Settings.EnableRigidbodySnapshotDryRun = true;
+            Settings.EnableHandoffEligibilityDryRun = true;
+            Settings.EnablePendingHandoffDryRun = true;
+            Settings.PrecisionDryRunOnly = true;
+        }
+
         private static bool OnToggle(UnityModManager.ModEntry modEntry, bool value)
         {
             Enabled = value;
 
             if (value)
             {
+                RepairDebugSettingsForBubbleBranch();
                 PerfManager.Reset();
                 EnsureOverlay();
                 Log("Enabled.");
@@ -141,30 +160,13 @@ namespace RailroaderStockOptimizer
             GUILayout.Label($"Hot: {PerfManager.HotCount}  Warm: {PerfManager.WarmCount}  Cold: {PerfManager.ColdCount}  Frozen: {PerfManager.FrozenCount}");
             GUILayout.Label($"Manager cost last pass: {PerfManager.LastPassMs:F3} ms");
 
-            if (Settings.EnablePrecisionWatchdog)
-            {
-                GUILayout.Label($"Precision batch: eval {PrecisionWatchdog.EvaluatedCount}, live {PrecisionWatchdog.NonZeroSampleCount}, zero {PrecisionWatchdog.ZeroSampleCount}");
-                GUILayout.Label($"Warn {PrecisionWatchdog.WarningCount}, recommend {PrecisionWatchdog.TransferRecommendedCount}, emergency {PrecisionWatchdog.EmergencyCount}");
-                GUILayout.Label($"Current batch worst: {PrecisionWatchdog.WorstLocalDistance:F0} m, float step {PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
-                GUILayout.Label($"Held worst: {PrecisionWatchdog.HeldWorstLocalDistance:F0} m, {PrecisionWatchdog.HeldWorstCarName}");
-                GUILayout.Label($"Last non-zero: {PrecisionWatchdog.LastNonZeroCarName}, {PrecisionWatchdog.LastNonZeroChosenPositionText}");
-                GUILayout.Label($"Last rec status: {PrecisionWatchdog.LastRecommendationStatus}");
-                GUILayout.Label($"Last rec age: {PrecisionWatchdog.LastRecommendationAgeSeconds:F1}s");
-                GUILayout.Label($"Last rec original: {PrecisionWatchdog.LastRecommendationOriginalText}");
-                GUILayout.Label($"Last rec current: {PrecisionWatchdog.LastRecommendationCurrentText}");
-                GUILayout.Label($"Last recommendation: {PrecisionWatchdog.LastRecommendation}");
-            }
-
-            if (Settings.EnablePrecisionWatchdog && Settings.EnableConsistDryRun)
-            {
-                GUILayout.Label($"Consists: groups {ConsistDryRun.GroupCount}, cached cars {ConsistDryRun.CachedUsableCarCount}, largest {ConsistDryRun.LargestGroupSize}, moves {ConsistDryRun.RecommendedGroupCount}");
-                GUILayout.Label($"Last group: {ConsistDryRun.LastGroupSummary}");
-                GUILayout.Label($"Last group recommendation: {ConsistDryRun.LastRecommendation}");
-                GUILayout.Label($"Transfer plan: {ConsistDryRun.TransferPlanSummary}");
-                GUILayout.Label($"Snapshot: {ConsistDryRun.SnapshotSummary}");
-                GUILayout.Label($"Handoff eligibility: {ConsistDryRun.HandoffEligibilitySummary}");
-                GUILayout.Label($"Pending handoffs: {ConsistDryRun.PendingHandoffSummary}");
-            }
+            GUILayout.Label($"Precision batch: eval {PrecisionWatchdog.EvaluatedCount}, live {PrecisionWatchdog.NonZeroSampleCount}, zero {PrecisionWatchdog.ZeroSampleCount}");
+            GUILayout.Label($"Warn {PrecisionWatchdog.WarningCount}, recommend {PrecisionWatchdog.TransferRecommendedCount}, emergency {PrecisionWatchdog.EmergencyCount}");
+            GUILayout.Label($"Last rec status: {PrecisionWatchdog.LastRecommendationStatus}");
+            GUILayout.Label($"Consists: groups {ConsistDryRun.GroupCount}, cached cars {ConsistDryRun.CachedUsableCarCount}, largest {ConsistDryRun.LargestGroupSize}, moves {ConsistDryRun.RecommendedGroupCount}");
+            GUILayout.Label($"Transfer plan: {ConsistDryRun.TransferPlanSummary}");
+            GUILayout.Label($"Handoff eligibility: {ConsistDryRun.HandoffEligibilitySummary}");
+            GUILayout.Label($"Pending handoffs: {ConsistDryRun.PendingHandoffSummary}");
         }
 
         private static void OnSaveGUI(UnityModManager.ModEntry modEntry)
@@ -266,7 +268,7 @@ namespace RailroaderStockOptimizer
         public float FullRefreshInterval = 1.5f;
         public float PlayerRefreshInterval = 0.5f;
 
-        public bool EnablePrecisionWatchdog = false;
+        public bool EnablePrecisionWatchdog = true;
         public bool PrecisionDryRunOnly = true;
         public bool ShowPrecisionDetailsInOverlay = true;
         public bool EnableConsistDryRun = true;
@@ -350,11 +352,6 @@ namespace RailroaderStockOptimizer
         public static double Distance(Vector3d a, Vector3d b)
         {
             return (a - b).Magnitude();
-        }
-
-        public override string ToString()
-        {
-            return $"{X:F1}, {Y:F1}, {Z:F1}";
         }
     }
 
@@ -444,14 +441,6 @@ namespace RailroaderStockOptimizer
         public string Summary = "none";
         public string Details = "none";
         public string BlockerText = "none";
-        public int CachedCars;
-        public int CoupledCars;
-        public int RigidbodyCount;
-        public int MissingRigidbodies;
-        public int MovingCars;
-        public int ForcedSleeping;
-        public int FarPhysicsRefs;
-        public double TargetLocalDistance;
     }
 
     public sealed class PendingHandoffRecord
@@ -1412,15 +1401,6 @@ namespace RailroaderStockOptimizer
             }
             else missingRb = cached;
 
-            report.CachedCars = cached;
-            report.CoupledCars = coupledCount;
-            report.RigidbodyCount = rbCount;
-            report.MissingRigidbodies = missingRb;
-            report.MovingCars = moving;
-            report.ForcedSleeping = forced;
-            report.FarPhysicsRefs = farRefs;
-            report.TargetLocalDistance = targetDistance;
-
             List<string> blockers = new List<string>();
             if (incompletePlan || cached < coupledCount) blockers.Add($"cache {cached}/{coupledCount}");
             if (missingRb > 0) blockers.Add($"missing rb {missingRb}");
@@ -1745,7 +1725,7 @@ namespace RailroaderStockOptimizer
 
         private void OnGUI()
         {
-            if (!Main.Enabled || !Main.Settings.EnableOverlay) return;
+            if (!Main.Enabled || Main.Settings == null || !Main.Settings.EnableOverlay) return;
             float maxWidth = Mathf.Max(560f, Screen.width - 20f);
             float maxHeight = Mathf.Max(300f, Screen.height - 40f);
             if (_windowRect.width > maxWidth) _windowRect.width = maxWidth;
@@ -1760,11 +1740,8 @@ namespace RailroaderStockOptimizer
             float scrollHeight = Mathf.Max(160f, _windowRect.height - 34f);
             _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Width(scrollWidth), GUILayout.Height(scrollHeight));
             DrawTopColumns(scrollWidth);
-            if (Main.Settings.EnablePrecisionWatchdog && Main.Settings.ShowPrecisionDetailsInOverlay)
-            {
-                DrawRecommendationAndSamples(scrollWidth);
-                if (Main.Settings.EnableConsistDryRun) DrawTransferPlanStacked(scrollWidth);
-            }
+            DrawRecommendationAndSamples(scrollWidth);
+            DrawTransferPlanStacked(scrollWidth);
             GUILayout.EndScrollView();
             GUI.DragWindow(new Rect(0f, 0f, 10000f, 20f));
         }
@@ -1785,6 +1762,11 @@ namespace RailroaderStockOptimizer
             _box = new GUIStyle(GUI.skin.box) { margin = new RectOffset(1, 1, 1, 1), padding = new RectOffset(3, 3, 2, 2) };
         }
 
+        private string OnOff(bool value)
+        {
+            return value ? "on" : "OFF";
+        }
+
         private void DrawTopColumns(float width)
         {
             float col = Mathf.Max(180f, (width - 18f) / 3f);
@@ -1793,10 +1775,10 @@ namespace RailroaderStockOptimizer
             Header("Stock"); Row("Tracked", PerfManager.TrackedCount.ToString()); Row("Hot/Warm", $"{PerfManager.HotCount}/{PerfManager.WarmCount}"); Row("Cold/Frozen", $"{PerfManager.ColdCount}/{PerfManager.FrozenCount}"); Row("Pass", $"{PerfManager.LastPassMs:F3} ms");
             GUILayout.EndVertical();
             GUILayout.BeginVertical(_box, GUILayout.Width(col));
-            Header("Precision"); Row("Eval L/Z", $"{PrecisionWatchdog.EvaluatedCount}  {PrecisionWatchdog.NonZeroSampleCount}/{PrecisionWatchdog.ZeroSampleCount}"); Row("W/M/E", $"{PrecisionWatchdog.WarningCount}/{PrecisionWatchdog.TransferRecommendedCount}/{PrecisionWatchdog.EmergencyCount}"); Row("Batch worst", $"{PrecisionWatchdog.WorstLocalDistance:F0} m"); Row("Float step", $"{PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
+            Header("Precision"); Row("Enabled", OnOff(Main.Settings.EnablePrecisionWatchdog)); Row("Eval L/Z", $"{PrecisionWatchdog.EvaluatedCount}  {PrecisionWatchdog.NonZeroSampleCount}/{PrecisionWatchdog.ZeroSampleCount}"); Row("W/M/E", $"{PrecisionWatchdog.WarningCount}/{PrecisionWatchdog.TransferRecommendedCount}/{PrecisionWatchdog.EmergencyCount}"); Row("Float step", $"{PrecisionWatchdog.WorstFloatStepMeters * 1000.0:F3} mm");
             GUILayout.EndVertical();
             GUILayout.BeginVertical(_box, GUILayout.Width(col));
-            Header("Consists"); Row("Source/cache", $"{ConsistDryRun.SourceCarCount}/{ConsistDryRun.CachedUsableCarCount}"); Row("Live/expired", $"{ConsistDryRun.LiveNowCarCount}/{ConsistDryRun.ExpiredCacheCount}"); Row("Groups/largest", $"{ConsistDryRun.GroupCount}/{ConsistDryRun.LargestGroupSize}"); Row("Move groups", ConsistDryRun.RecommendedGroupCount.ToString());
+            Header("Consists"); Row("Enabled", OnOff(Main.Settings.EnableConsistDryRun)); Row("Source/cache", $"{ConsistDryRun.SourceCarCount}/{ConsistDryRun.CachedUsableCarCount}"); Row("Groups/largest", $"{ConsistDryRun.GroupCount}/{ConsistDryRun.LargestGroupSize}"); Row("Move groups", ConsistDryRun.RecommendedGroupCount.ToString());
             GUILayout.EndVertical();
             GUILayout.EndHorizontal();
         }
@@ -1806,20 +1788,22 @@ namespace RailroaderStockOptimizer
             float col = Mathf.Max(260f, (width - 14f) * 0.5f);
             GUILayout.BeginHorizontal();
             GUILayout.BeginVertical(_box, GUILayout.Width(col));
-            Header("Recommendation");
+            Header("Recommendation / consist move");
+            Row("Precision", OnOff(Main.Settings.EnablePrecisionWatchdog));
+            Row("Details", OnOff(Main.Settings.ShowPrecisionDetailsInOverlay));
+            Row("Consist", OnOff(Main.Settings.EnableConsistDryRun));
             Row("Status", PrecisionWatchdog.LastRecommendationStatus);
             Row("Age", $"{PrecisionWatchdog.LastRecommendationAgeSeconds:F1}s");
             ClipLabel("Original: " + PrecisionWatchdog.LastRecommendationOriginalText);
             ClipLabel("Current: " + PrecisionWatchdog.LastRecommendationCurrentText);
             ClipLabel("Indiv: " + PrecisionWatchdog.LastRecommendation);
-            Header("Consist move");
             Row("Worst group", $"{ConsistDryRun.WorstGroupLocalDistance:F0} m / {ConsistDryRun.WorstGroupFloatStepMeters * 1000.0:F3} mm");
             ClipLabel("Group: " + ConsistDryRun.LastGroupSummary);
             ClipLabel("Move: " + ConsistDryRun.LastRecommendation);
             Row("Rebuild", $"{ConsistDryRun.LastRebuildAgeSeconds:F1}s, {ConsistDryRun.LastRebuildReason}");
             GUILayout.EndVertical();
             GUILayout.BeginVertical(_box, GUILayout.Width(col));
-            Header("Samples");
+            Header("Samples / current state");
             Row("Live car", PrecisionWatchdog.DisplayCarName);
             Row("Source", PrecisionWatchdog.DisplayPositionSource);
             Row("Pos", PrecisionWatchdog.DisplayChosenPositionText);
@@ -1837,7 +1821,7 @@ namespace RailroaderStockOptimizer
         private void DrawTransferPlanStacked(float width)
         {
             GUILayout.BeginVertical(_box, GUILayout.Width(width - 8f));
-            Header("Consist transfer plan + rigidbody snapshot + handoff gate dry-run");
+            Header("Consist transfer plan + snapshot + handoff queue");
             Row("Plan age", $"{ConsistDryRun.TransferPlanAgeSeconds:F1}s");
             ClipLabel("Summary: " + ConsistDryRun.TransferPlanSummary);
             ClipLabel("Snapshot: " + ConsistDryRun.SnapshotSummary);
