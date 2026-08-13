@@ -87,8 +87,14 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Main.cs" />
+    <Compile Include="$(IntermediateOutputPath)PatchedMain.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <None Include="Main.cs" />
+    <None Include="PatchMainForPriorityHandoff.ps1" />
   </ItemGroup>
+  <Target Name="GeneratePatchedMain" BeforeTargets="CoreCompile">
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)PatchMainForPriorityHandoff.ps1&quot; -InputPath &quot;$(ProjectDir)Main.cs&quot; -OutputPath &quot;$(IntermediateOutputPath)PatchedMain.cs&quot;" />
+  </Target>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
