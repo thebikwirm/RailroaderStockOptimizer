@@ -18,9 +18,19 @@ namespace RailroaderStockOptimizer
 
         private float _nextAutoDumpTime;
         private float _lastManualDumpTime;
+        private Rect _buttonRect = new Rect(12f, 12f, 260f, 76f);
+
+        public static string LastDumpPath { get; private set; } = "not written yet";
+        public static string LastDumpStatus { get; private set; } = "not written yet";
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-        private static void RuntimeInstall()
+        private static void RuntimeInstallAfterSceneLoad()
+        {
+            Install();
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void RuntimeInstallBeforeSceneLoad()
         {
             Install();
         }
@@ -36,9 +46,11 @@ namespace RailroaderStockOptimizer
                 DontDestroyOnLoad(go);
                 go.hideFlags = HideFlags.HideAndDontSave;
                 _instance = go.AddComponent<DebugDumpWatcher>();
+                LastDumpStatus = "dump watcher installed";
             }
-            catch
+            catch (Exception ex)
             {
+                LastDumpStatus = "dump watcher install failed: " + ex.Message;
             }
         }
 
@@ -54,15 +66,53 @@ namespace RailroaderStockOptimizer
                     _nextAutoDumpTime = Time.realtimeSinceStartup + 10f;
                     WriteDump(false);
                 }
+            }
+            catch (Exception ex)
+            {
+                LastDumpStatus = "auto dump failed: " + ex.Message;
+            }
+        }
 
-                if (Input.GetKeyDown(KeyCode.F7) && Time.realtimeSinceStartup - _lastManualDumpTime > 0.5f)
-                {
-                    _lastManualDumpTime = Time.realtimeSinceStartup;
-                    WriteDump(true);
-                }
+        private void OnGUI()
+        {
+            try
+            {
+                if (Main.ModEntry == null || Main.Settings == null || !Main.Settings.EnableOverlay)
+                    return;
+
+                _buttonRect = GUI.Window(444124, _buttonRect, DrawDumpWindow, "Debug dump");
             }
             catch
             {
+            }
+        }
+
+        private void DrawDumpWindow(int id)
+        {
+            GUILayout.BeginVertical();
+            if (GUILayout.Button("Write uploadable dump now", GUILayout.Height(24f)))
+            {
+                ManualDump();
+            }
+            GUILayout.Label(LastDumpStatus ?? "not written yet");
+            GUILayout.EndVertical();
+            GUI.DragWindow(new Rect(0f, 0f, 10000f, 20f));
+        }
+
+        public static string ManualDump()
+        {
+            try
+            {
+                Install();
+                string path = WriteDump(true);
+                LastDumpStatus = "manual dump written: " + path;
+                return path;
+            }
+            catch (Exception ex)
+            {
+                LastDumpStatus = "manual dump failed: " + ex.Message;
+                try { Main.Log(LastDumpStatus); } catch { }
+                return null;
             }
         }
 
@@ -88,13 +138,17 @@ namespace RailroaderStockOptimizer
             string stablePath = Path.Combine(dir, StableDumpFileName);
             string text = BuildDumpText();
             File.WriteAllText(stablePath, text, Encoding.UTF8);
+            LastDumpPath = stablePath;
+            LastDumpStatus = "stable dump written: " + stablePath;
 
             if (timestampedCopy)
             {
                 string stampedName = ManualDumpPrefix + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
                 string stampedPath = Path.Combine(dir, stampedName);
                 File.WriteAllText(stampedPath, text, Encoding.UTF8);
-                Main.Log("Debug dump written: " + stampedPath);
+                LastDumpPath = stampedPath;
+                LastDumpStatus = "manual dump written: " + stampedPath;
+                try { Main.Log("Debug dump written: " + stampedPath); } catch { }
                 return stampedPath;
             }
 
@@ -107,6 +161,7 @@ namespace RailroaderStockOptimizer
             sb.AppendLine("Railroader Stock Optimizer debug dump");
             sb.AppendLine("Generated local: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
             sb.AppendLine("Generated UTC:   " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + "Z");
+            sb.AppendLine("Dump directory:  " + GetDumpDirectory());
             sb.AppendLine("Mod enabled:     " + Main.Enabled);
             sb.AppendLine();
 
