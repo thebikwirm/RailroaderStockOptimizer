@@ -101,6 +101,7 @@ namespace RailroaderStockOptimizer
             Settings.EnableConsistDryRun = GUILayout.Toggle(Settings.EnableConsistDryRun, "Enable real coupled-consist dry-run");
             Settings.EnableRigidbodySnapshotDryRun = GUILayout.Toggle(Settings.EnableRigidbodySnapshotDryRun, "Enable rigidbody snapshot dry-run");
             Settings.EnableHandoffEligibilityDryRun = GUILayout.Toggle(Settings.EnableHandoffEligibilityDryRun, "Enable handoff eligibility gate dry-run");
+            Settings.EnablePendingHandoffDryRun = GUILayout.Toggle(Settings.EnablePendingHandoffDryRun, "Enable pending handoff queue dry-run");
 
             GUILayout.Label($"Bubble Grid Size: {Settings.BubbleGridSize:F0} m");
             Settings.BubbleGridSize = GUILayout.HorizontalSlider(Settings.BubbleGridSize, 5000f, 50000f);
@@ -130,6 +131,10 @@ namespace RailroaderStockOptimizer
             Settings.HandoffMaxReferenceDelta = GUILayout.HorizontalSlider(Settings.HandoffMaxReferenceDelta, 1f, 100f);
             GUILayout.Label($"Handoff max target local distance: {Settings.HandoffMaxTargetLocalDistance:F0} m");
             Settings.HandoffMaxTargetLocalDistance = GUILayout.HorizontalSlider(Settings.HandoffMaxTargetLocalDistance, 1000f, 50000f);
+            GUILayout.Label($"Pending handoff retain time: {Settings.PendingHandoffRetainSeconds:F0} sec");
+            Settings.PendingHandoffRetainSeconds = GUILayout.HorizontalSlider(Settings.PendingHandoffRetainSeconds, 30f, 600f);
+            GUILayout.Label($"Pending handoff max shown: {Settings.PendingHandoffMaxShown}");
+            Settings.PendingHandoffMaxShown = Mathf.RoundToInt(GUILayout.HorizontalSlider(Settings.PendingHandoffMaxShown, 1f, 12f));
 
             GUILayout.Space(8f);
             GUILayout.Label($"Tracked cars: {PerfManager.TrackedCount}");
@@ -158,6 +163,7 @@ namespace RailroaderStockOptimizer
                 GUILayout.Label($"Transfer plan: {ConsistDryRun.TransferPlanSummary}");
                 GUILayout.Label($"Snapshot: {ConsistDryRun.SnapshotSummary}");
                 GUILayout.Label($"Handoff eligibility: {ConsistDryRun.HandoffEligibilitySummary}");
+                GUILayout.Label($"Pending handoffs: {ConsistDryRun.PendingHandoffSummary}");
             }
         }
 
@@ -266,6 +272,7 @@ namespace RailroaderStockOptimizer
         public bool EnableConsistDryRun = true;
         public bool EnableRigidbodySnapshotDryRun = true;
         public bool EnableHandoffEligibilityDryRun = true;
+        public bool EnablePendingHandoffDryRun = true;
         public float BubbleGridSize = 20000f;
         public float PrecisionWarningDistance = 10000f;
         public float PrecisionTransferDistance = 20000f;
@@ -280,6 +287,8 @@ namespace RailroaderStockOptimizer
         public int HandoffMaxMovingCars = 0;
         public float HandoffMaxReferenceDelta = 25f;
         public float HandoffMaxTargetLocalDistance = 15000f;
+        public float PendingHandoffRetainSeconds = 240f;
+        public int PendingHandoffMaxShown = 6;
 
         public override void Save(UnityModManager.ModEntry modEntry)
         {
@@ -434,6 +443,32 @@ namespace RailroaderStockOptimizer
         public bool Ready;
         public string Summary = "none";
         public string Details = "none";
+        public string BlockerText = "none";
+        public int CachedCars;
+        public int CoupledCars;
+        public int RigidbodyCount;
+        public int MissingRigidbodies;
+        public int MovingCars;
+        public int ForcedSleeping;
+        public int FarPhysicsRefs;
+        public double TargetLocalDistance;
+    }
+
+    public sealed class PendingHandoffRecord
+    {
+        public string Key;
+        public string DisplayName;
+        public string CurrentBubble;
+        public string TargetBubble;
+        public int CachedCars;
+        public int CoupledCars;
+        public double LocalDistance;
+        public double TargetLocalDistance;
+        public float FirstSeenTime;
+        public float LastSeenTime;
+        public bool Ready;
+        public string Status;
+        public string Blockers;
     }
 
     public static class PrecisionWatchdog
@@ -916,6 +951,111 @@ namespace RailroaderStockOptimizer
         private sealed class TransformCandidate { public Transform Transform; public string Source; }
     }
 
+    public static class PendingHandoffQueue
+    {
+        private static readonly List<PendingHandoffRecord> _items = new List<PendingHandoffRecord>();
+        public static string Summary { get; private set; } = "none";
+        public static string Details { get; private set; } = "none";
+
+        public static void Reset()
+        {
+            _items.Clear();
+            Summary = "none";
+            Details = "none";
+        }
+
+        public static void UpdateFromPlan(string key, string displayName, int cachedCars, int coupledCars, string currentBubble, string targetBubble, double localDistance, double targetLocalDistance, HandoffEligibilityReport eligibility)
+        {
+            if (Main.Settings == null || !Main.Settings.EnablePendingHandoffDryRun || string.IsNullOrEmpty(key))
+                return;
+
+            float now = Time.realtimeSinceStartup;
+            PendingHandoffRecord record = Find(key);
+            if (record == null)
+            {
+                record = new PendingHandoffRecord();
+                record.Key = key;
+                record.FirstSeenTime = now;
+                _items.Add(record);
+            }
+
+            record.DisplayName = string.IsNullOrEmpty(displayName) ? key : displayName;
+            record.CachedCars = cachedCars;
+            record.CoupledCars = coupledCars;
+            record.CurrentBubble = currentBubble;
+            record.TargetBubble = targetBubble;
+            record.LocalDistance = localDistance;
+            record.TargetLocalDistance = targetLocalDistance;
+            record.LastSeenTime = now;
+            record.Ready = eligibility != null && eligibility.Ready;
+            record.Blockers = eligibility != null ? eligibility.BlockerText : "unknown";
+            record.Status = record.Ready ? "READY DRY-RUN - would handoff when real mover is enabled" : "waiting: " + record.Blockers;
+            RefreshSummary();
+        }
+
+        public static void RefreshSummary()
+        {
+            if (Main.Settings == null || !Main.Settings.EnablePendingHandoffDryRun)
+            {
+                Summary = "disabled";
+                Details = "none";
+                return;
+            }
+
+            float now = Time.realtimeSinceStartup;
+            float retain = Mathf.Max(10f, Main.Settings.PendingHandoffRetainSeconds);
+            for (int i = _items.Count - 1; i >= 0; i--)
+            {
+                if (now - _items[i].LastSeenTime > retain)
+                    _items.RemoveAt(i);
+            }
+
+            if (_items.Count == 0)
+            {
+                Summary = "none";
+                Details = "none";
+                return;
+            }
+
+            int ready = 0;
+            int waiting = 0;
+            for (int i = 0; i < _items.Count; i++)
+            {
+                if (_items[i].Ready) ready++; else waiting++;
+            }
+
+            Summary = $"pending {_items.Count}, ready {ready}, waiting {waiting}";
+            List<string> lines = new List<string>();
+            lines.Add("Pending handoff queue - dry-run only");
+            lines.Add("Running trains are queued, not moved. A queued consist becomes READY only after the gate passes.");
+
+            int max = Mathf.Max(1, Main.Settings.PendingHandoffMaxShown);
+            int count = Mathf.Min(max, _items.Count);
+            for (int i = 0; i < count; i++)
+            {
+                PendingHandoffRecord r = _items[i];
+                lines.Add($"{i + 1}. {r.DisplayName}");
+                lines.Add($"   {r.CurrentBubble} -> {r.TargetBubble}, cars {r.CachedCars}/{r.CoupledCars}, {r.LocalDistance:F0}m -> {r.TargetLocalDistance:F0}m");
+                lines.Add($"   status: {r.Status}");
+                lines.Add($"   age {now - r.FirstSeenTime:F1}s, seen {now - r.LastSeenTime:F1}s ago");
+            }
+            if (_items.Count > count)
+                lines.Add($"... plus {_items.Count - count} more pending handoff(s)");
+
+            Details = string.Join("\n", lines.ToArray());
+        }
+
+        private static PendingHandoffRecord Find(string key)
+        {
+            for (int i = 0; i < _items.Count; i++)
+            {
+                if (string.Equals(_items[i].Key, key, StringComparison.OrdinalIgnoreCase))
+                    return _items[i];
+            }
+            return null;
+        }
+    }
+
     public static class ConsistDryRun
     {
         public static int SourceCarCount { get; private set; }
@@ -937,6 +1077,8 @@ namespace RailroaderStockOptimizer
         public static string SnapshotDetails { get; private set; } = "none";
         public static string HandoffEligibilitySummary { get; private set; } = "none";
         public static string HandoffEligibilityDetails { get; private set; } = "none";
+        public static string PendingHandoffSummary => PendingHandoffQueue.Summary;
+        public static string PendingHandoffDetails => PendingHandoffQueue.Details;
         public static float TransferPlanAgeSeconds => _transferPlanSetTime > 0f ? Time.realtimeSinceStartup - _transferPlanSetTime : 0f;
         public static float LastRebuildAgeSeconds => _lastRebuildTime > 0f ? Time.realtimeSinceStartup - _lastRebuildTime : 0f;
 
@@ -956,6 +1098,7 @@ namespace RailroaderStockOptimizer
             _nextRebuildTime = _lastRebuildTime = _transferPlanSetTime = _transferPlanExpireTime = 0f;
             _forceRebuild = false;
             _forceReason = "none";
+            PendingHandoffQueue.Reset();
         }
 
         public static void RequestImmediateRebuild(string reason)
@@ -969,6 +1112,8 @@ namespace RailroaderStockOptimizer
         {
             if (Main.Settings == null || !Main.Settings.EnableConsistDryRun) return;
             PrecisionWatchdog.UpdateLastRecommendationStatus(carStates);
+            PendingHandoffQueue.RefreshSummary();
+
             float now = Time.realtimeSinceStartup;
             if (_transferPlanSetTime > 0f && now >= _transferPlanExpireTime)
             {
@@ -990,6 +1135,7 @@ namespace RailroaderStockOptimizer
             _lastRebuildTime = now;
             LastRebuildReason = reason;
             Rebuild(carStates);
+            PendingHandoffQueue.RefreshSummary();
         }
 
         private static void Rebuild(IReadOnlyList<CarState> carStates)
@@ -1037,7 +1183,7 @@ namespace RailroaderStockOptimizer
                     if (state.HasCachedPosition && now - state.CachedPositionTime <= maxAge) cachedStates.Add(state);
                 }
                 if (cachedStates.Count == 0) continue;
-                EvaluateGroup(cachedStates, coupledCars.Count);
+                EvaluateGroup(cachedStates, coupledCars);
             }
         }
 
@@ -1060,8 +1206,9 @@ namespace RailroaderStockOptimizer
             }
         }
 
-        private static void EvaluateGroup(List<CarState> cachedStates, int coupledCount)
+        private static void EvaluateGroup(List<CarState> cachedStates, List<Car> coupledCars)
         {
+            int coupledCount = coupledCars != null ? coupledCars.Count : cachedStates.Count;
             GroupCount++;
             if (coupledCount > LargestGroupSize) LargestGroupSize = coupledCount;
             Vector3d sum = Vector3d.Zero;
@@ -1104,15 +1251,40 @@ namespace RailroaderStockOptimizer
             {
                 RecommendedGroupCount++;
                 LastRecommendation = $"{cachedStates.Count}/{coupledCount} cached cars: {currentBubbleId} -> {best.Id}, center local {localDistance:F0}m -> {bestDistance:F0}m, worst car {worstCarDistance:F0}m, float step {floatStep * 1000.0:F3}mm";
-                BuildTransferPlan(cachedStates, coupledCount, currentBubbleId, currentOrigin, best, center, localDistance, bestDistance, worstCarName, worstCarDistance, floatStep, oldestAge);
+                string key = BuildConsistKey(coupledCars, cachedStates);
+                BuildTransferPlan(key, cachedStates, coupledCount, currentBubbleId, currentOrigin, best, center, localDistance, bestDistance, worstCarName, worstCarDistance, floatStep, oldestAge);
             }
         }
 
-        private static void BuildTransferPlan(List<CarState> cachedStates, int coupledCount, string currentBubbleId, Vector3d currentOrigin, PhysicsBubble targetBubble, Vector3d center, double localDistance, double targetDistance, string worstCarName, double worstCarDistance, double floatStep, float oldestAge)
+        private static string BuildConsistKey(List<Car> coupledCars, List<CarState> cachedStates)
+        {
+            List<string> ids = new List<string>();
+            if (coupledCars != null)
+            {
+                for (int i = 0; i < coupledCars.Count; i++)
+                {
+                    if (coupledCars[i] != null && !string.IsNullOrEmpty(coupledCars[i].id)) ids.Add(coupledCars[i].id);
+                }
+            }
+            if (ids.Count == 0 && cachedStates != null)
+            {
+                for (int i = 0; i < cachedStates.Count; i++)
+                {
+                    if (cachedStates[i] != null && !string.IsNullOrEmpty(cachedStates[i].CarId)) ids.Add(cachedStates[i].CarId);
+                }
+            }
+            ids.Sort(StringComparer.OrdinalIgnoreCase);
+            return string.Join("|", ids.ToArray());
+        }
+
+        private static void BuildTransferPlan(string consistKey, List<CarState> cachedStates, int coupledCount, string currentBubbleId, Vector3d currentOrigin, PhysicsBubble targetBubble, Vector3d center, double localDistance, double targetDistance, string worstCarName, double worstCarDistance, double floatStep, float oldestAge)
         {
             bool incomplete = cachedStates.Count < coupledCount;
             List<RigidbodySnapshot> snapshots = Main.Settings != null && Main.Settings.EnableRigidbodySnapshotDryRun ? CaptureRigidbodySnapshots(cachedStates) : new List<RigidbodySnapshot>();
             HandoffEligibilityReport eligibility = BuildEligibility(cachedStates, coupledCount, snapshots, incomplete, targetDistance, oldestAge);
+            string displayName = cachedStates.Count > 0 ? cachedStates[0].Name + (coupledCount > 1 ? " +" + (coupledCount - 1).ToString() : string.Empty) : consistKey;
+            PendingHandoffQueue.UpdateFromPlan(consistKey, displayName, cachedStates.Count, coupledCount, currentBubbleId, targetBubble.Id, localDistance, targetDistance, eligibility);
+
             TransferPlanSummary = $"{(incomplete ? "INCOMPLETE - " : string.Empty)}{cachedStates.Count}/{coupledCount} cached cars: {currentBubbleId} -> {targetBubble.Id}, center {localDistance:F0}m -> {targetDistance:F0}m";
 
             List<string> lines = new List<string>();
@@ -1215,6 +1387,7 @@ namespace RailroaderStockOptimizer
             {
                 report.Summary = "disabled";
                 report.Details = "none";
+                report.BlockerText = "disabled";
                 return report;
             }
             Settings settings = Main.Settings;
@@ -1239,6 +1412,15 @@ namespace RailroaderStockOptimizer
             }
             else missingRb = cached;
 
+            report.CachedCars = cached;
+            report.CoupledCars = coupledCount;
+            report.RigidbodyCount = rbCount;
+            report.MissingRigidbodies = missingRb;
+            report.MovingCars = moving;
+            report.ForcedSleeping = forced;
+            report.FarPhysicsRefs = farRefs;
+            report.TargetLocalDistance = targetDistance;
+
             List<string> blockers = new List<string>();
             if (incompletePlan || cached < coupledCount) blockers.Add($"cache {cached}/{coupledCount}");
             if (missingRb > 0) blockers.Add($"missing rb {missingRb}");
@@ -1247,7 +1429,8 @@ namespace RailroaderStockOptimizer
             if (targetDistance > settings.HandoffMaxTargetLocalDistance) blockers.Add($"target local {targetDistance:F0}>{settings.HandoffMaxTargetLocalDistance:F0}");
             if (oldestAge > settings.ConsistCachedPositionMaxAge) blockers.Add($"old cache {oldestAge:F1}s");
             report.Ready = blockers.Count == 0;
-            report.Summary = report.Ready ? $"READY DRY-RUN: {cached}/{coupledCount} cars, rb {rbCount}, moving {moving}, target {targetDistance:F0}m" : $"NOT READY: {string.Join(", ", blockers.ToArray())}";
+            report.BlockerText = report.Ready ? "ready" : string.Join(", ", blockers.ToArray());
+            report.Summary = report.Ready ? $"READY DRY-RUN: {cached}/{coupledCount} cars, rb {rbCount}, moving {moving}, target {targetDistance:F0}m" : $"NOT READY: {report.BlockerText}";
             List<string> details = new List<string>();
             details.Add("Handoff eligibility gate - dry-run only");
             details.Add(report.Ready ? "PASS: plan is eligible for a future single-consist handoff test" : "BLOCKED: do not attempt real movement yet");
@@ -1438,7 +1621,7 @@ namespace RailroaderStockOptimizer
         public static void Tick(float deltaTime)
         {
             if (_cars.Count == 0) return;
-            double start = Time.realtimeSinceStartupAsDouble;
+            double start = Time.realtimeSinceStartup;
             int batchDivider = Mathf.Max(1, Main.Settings.BatchDivider);
             int batchSize = Mathf.Max(1, _cars.Count / batchDivider);
             if (Main.Settings.EnablePrecisionWatchdog) PrecisionWatchdog.BeginBatch();
@@ -1463,7 +1646,7 @@ namespace RailroaderStockOptimizer
                 }
             }
             if (Main.Settings.EnablePrecisionWatchdog && Main.Settings.EnableConsistDryRun) ConsistDryRun.Tick(_cars);
-            LastPassMs = (Time.realtimeSinceStartupAsDouble - start) * 1000.0;
+            LastPassMs = (Time.realtimeSinceStartup - start) * 1000.0;
         }
 
         private static void UpdateTier(CarState state)
@@ -1659,9 +1842,11 @@ namespace RailroaderStockOptimizer
             ClipLabel("Summary: " + ConsistDryRun.TransferPlanSummary);
             ClipLabel("Snapshot: " + ConsistDryRun.SnapshotSummary);
             ClipLabel("Eligibility: " + ConsistDryRun.HandoffEligibilitySummary);
+            ClipLabel("Pending: " + ConsistDryRun.PendingHandoffSummary);
             DrawSection("Transfer plan", ConsistDryRun.TransferPlanDetails, 16);
             DrawSection("Rigidbody snapshot", ConsistDryRun.SnapshotDetails, 16);
             DrawSection("Handoff eligibility", ConsistDryRun.HandoffEligibilityDetails, 12);
+            DrawSection("Pending handoffs", ConsistDryRun.PendingHandoffDetails, 18);
             GUILayout.EndVertical();
         }
 
