@@ -101,12 +101,12 @@ $text = $text.Replace(
 
 # --- Large-save performance/safety patch ---
 
-# Add settings for test safety and plan budget. Auto handoff is no longer allowed to pull every
-# stopped remote consist in a large save into bubble-local render space.
+# Add settings for test safety and plan budget. Session cap and plan budget are now the main
+# protections; the hot/warm-only gate stays available but defaults off for active handoff testing.
 $text = $text.Replace(
 '        public int PendingHandoffMaxShown = 6;',
 '        public int PendingHandoffMaxShown = 6;
-        public bool AutoHandoffOnlyHotOrWarm = true;
+        public bool AutoHandoffOnlyHotOrWarm = false;
         public int AutoHandoffMaxAppliedPerSession = 2;
         public int MaxHandoffPlansPerRebuild = 12;')
 
@@ -175,7 +175,7 @@ $text = $text.Replace(
                 string key = BuildConsistKey(coupledCars, plannedStates);
                 BuildTransferPlan(key, plannedStates, coupledCount, missingCars, currentBubbleId, currentOrigin, best, center, localDistance, bestDistance, worstCarName, worstCarDistance, floatStep, oldestAge);')
 
-# Only the highest-priority READY handoff may apply, and only if the active-consist gate passes.
+# Only the highest-priority READY handoff may apply, and only if the safety gate passes.
 $text = $text.Replace(
 '            if (eligibility.Ready && Main.Settings.EnableAutomaticHandoff && !Main.Settings.PrecisionDryRunOnly)',
 '            if (eligibility.Ready && Main.Settings.EnableAutomaticHandoff && !Main.Settings.PrecisionDryRunOnly && PendingHandoffQueue.ShouldAttemptAutoHandoff(consistKey) && AutoHandoffAllowedForGroup(plannedStates, out applyStatus))')
@@ -200,7 +200,7 @@ $text = $text.Replace(
                 PendingHandoffQueue.MarkApplied(consistKey, AutoHandoffSummary);
                 Main.Log("Automatic bubble handoff applied: " + AutoHandoffSummary);')
 
-# Insert the active-consist auto gate before the actual mover.
+# Insert the capped auto gate before the actual mover.
 $text = $text.Replace(
 '        private static bool ApplyAutomaticHandoff(string consistKey, List<CarState> states, string currentBubbleId, Vector3d currentOrigin, PhysicsBubble targetBubble, Vector3d center, double oldDistance, double newDistance, out string status)
         {',
@@ -263,12 +263,12 @@ $text = $text.Replace(
             }
             List<RigidCandidate> rigidCandidates = new List<RigidCandidate>();')
 
-# Prefer real user settings on large saves rather than forcibly enabling the dangerous auto test on every load.
+# This branch is for actively testing real handoffs. Keep auto enabled, but cap it so a large save
+# cannot immediately move every remote stopped consist.
 $text = $text.Replace(
 '            Settings.EnableAutomaticHandoff = true;',
-'            // Do not force automatic handoff on every load; large saves can contain hundreds of stopped remote cars.
-            // Enable it in UMM when actively testing.
-            Settings.EnableAutomaticHandoff = Settings.EnableAutomaticHandoff;')
+'            Settings.EnableAutomaticHandoff = true;
+            Settings.AutoHandoffOnlyHotOrWarm = false;')
 
 $dir = Split-Path -Parent $OutputPath
 if ($dir -and !(Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
